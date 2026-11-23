@@ -10,7 +10,7 @@ build by Steam depot manifest, and mods install straight into the instance you s
 Grab the installer from [Releases](../../releases/latest):
 
 ```
-GD Launcher_1.0.0_x64-setup.exe
+GD.Launcher_1.0.0_x64-setup.exe
 ```
 
 It installs per-user (no admin prompt) and needs nothing else — WebView2 ships with Windows 11.
@@ -166,10 +166,9 @@ tail is a digit string and not a number — `2.2074` is 2.2 build 074 and shippe
 compared digit by digit with shorter first (`2.2` < `2.201`).
 
 There is no public direct download for any release and v6+ is account-gated, so the launcher
-does not pretend to fetch it. It resolves the release, opens Absolute's store, then runs the
-installer you picked with the instance folder as the working directory and its path already on
-the clipboard. The instance page has a release selector plus the full option table with game
-build, release date, channel (Geode / standalone) and cost.
+resolves the release from Absolute's own catalogue and installs it itself — see
+[Native Mega Hack install](#native-mega-hack-install). The instance page is a release selector
+and one install button.
 
 ## Native Mega Hack install
 
@@ -195,14 +194,13 @@ file written, so **remove** on the instance page deletes exactly those files and
 There is no separate "run installer" step: one button, start to finish.
 
 Only exact game builds are served: a build the catalogue does not list (2.2, 2.202, 2.203) has
-no native install and falls back to the installer button rather than being handed the wrong
-package.
+no native install, so the button opens the store instead of handing over the wrong package.
 
 Paid releases (v6 and up) need an Absolute account. The launcher reads the license the official
 installer writes to `%LOCALAPPDATA%\absolllute.megahack\license` — it never handles your
 password. No license on disk means the button says `sign in to install` and opens the store;
 once you have signed in there once, every paid release installs straight from the instance page.
-v5 is free and not in the catalogue, so it keeps the installer path.
+v5 is free and not in the catalogue, so its button opens the store too.
 
 ## Where things live
 
