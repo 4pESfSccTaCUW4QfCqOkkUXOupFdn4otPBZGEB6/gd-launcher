@@ -275,7 +275,8 @@ git push origin v1.0.0
 ```
 
 `.github/workflows/release.yml` runs `npm ci` then `tauri-action` on `windows-latest` and attaches
-`GD Launcher_1.0.0_x64-setup.exe` to a draft release. `.github/workflows/check.yml` runs the
+the installer to a draft release (GitHub rewrites the space in the filename to a dot, so the
+asset lands as `GD.Launcher_1.0.0_x64-setup.exe`). `.github/workflows/check.yml` runs the
 typecheck and the Rust tests on every push and pull request.
 
 ## Licence
