@@ -47,8 +47,8 @@ jobs:
           releaseBody: |
             Windows installer. Per-user, no admin prompt, WebView2 already present on Windows 11.
 
-            - `GD.Launcher_*_x64-setup.exe` — the launcher window
-            - `gd.exe` — the same launcher in a terminal; put it on `PATH` and run `gd help`
+            - `GD.Launcher_*_x64-setup.exe` - the launcher window
+            - `gd.exe` - the same launcher in a terminal; put it on `PATH` and run `gd help`
           releaseDraft: true
           prerelease: false
 

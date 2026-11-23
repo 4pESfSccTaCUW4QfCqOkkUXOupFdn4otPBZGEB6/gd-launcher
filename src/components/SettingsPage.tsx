@@ -77,8 +77,8 @@ export default function SettingsPage({
       await onReload();
       notify(
         removed > 0
-          ? `cached login token deleted — QR sign-in is back`
-          : "no token on disk — QR sign-in is already available",
+          ? `cached login token deleted. QR sign-in is back`
+          : "no token on disk. QR sign-in is already available",
         "ok",
       );
     } catch (err) {
@@ -144,8 +144,8 @@ export default function SettingsPage({
                   </div>
                   <div className="hint">
                     detected from the local client
-                    {account.active ? " — signed in now" : ""}
-                    {account.remember_password ? " — login key cached" : ""}
+                    {account.active ? " (signed in now)" : ""}
+                    {account.remember_password ? " (login key cached)" : ""}
                   </div>
                 </>
               ) : (
@@ -166,12 +166,12 @@ export default function SettingsPage({
 
           <dl className="kv" style={{ marginBottom: 12 }}>
             <dt>steam id</dt>
-            <dd>{account?.steam_id || "—"}</dd>
+            <dd>{account?.steam_id || "-"}</dd>
             <dt>depot session</dt>
             <dd>
               {qrDone
                 ? `cached by DepotDownloader${session.username ? ` for ${session.username}` : ""}`
-                : "none — the next pull shows a QR code"}
+                : "none. the next pull shows a QR code"}
             </dd>
             <dt>token store</dt>
             <dd>{session.path || "not written yet"}</dd>
@@ -183,7 +183,7 @@ export default function SettingsPage({
             </button>
             <span className="hint" style={{ marginTop: 0 }}>
               {qrDone
-                ? "deletes the cached login token — the QR code comes back"
+                ? "deletes the cached login token. The QR code comes back"
                 : "nothing cached, so the QR code already shows on the next pull"}
             </span>
           </div>
@@ -197,7 +197,7 @@ export default function SettingsPage({
               onChange={(e) => patch("steam_username", e.target.value)}
             />
             <div className="hint">
-              blank uses whatever the Steam client reports. no password is ever stored — the depot
+              blank uses whatever the Steam client reports. no password is ever stored. The depot
               tool reuses the cached login key.
             </div>
           </label>
@@ -236,7 +236,7 @@ export default function SettingsPage({
             <span>DepotDownloader.exe path</span>
             <input
               value={draft.depotdownloader_path}
-              placeholder={tool?.depotdownloader ?? "not installed — use the button below"}
+              placeholder={tool?.depotdownloader ?? "not installed. use the button below"}
               onChange={(e) => patch("depotdownloader_path", e.target.value)}
             />
             <div className="hint">
@@ -291,7 +291,7 @@ export default function SettingsPage({
             />
             <div className="hint">
               blank uses the app data folder. changing this only affects instances created
-              afterwards — existing ones keep their absolute paths.
+              afterwards. Existing ones keep their absolute paths.
             </div>
           </label>
 
@@ -364,10 +364,10 @@ export default function SettingsPage({
                       <td>
                         <span className="badge version">{v.version}</span>
                       </td>
-                      <td className="mono">{v.build_id || "—"}</td>
+                      <td className="mono">{v.build_id || "-"}</td>
                       <td className="mono">{v.manifest_id}</td>
                       <td className="mono">{v.depot_id}</td>
-                      <td>{v.notes || "—"}</td>
+                      <td>{v.notes || "-"}</td>
                       <td style={{ textAlign: "right" }}>
                         <button
                           className="tiny danger"

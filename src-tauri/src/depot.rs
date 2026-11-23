@@ -1,8 +1,8 @@
 //! Depot pulling.
 //!
 //! Two interchangeable backends:
-//!   * SteamRE/DepotDownloader — auto-fetched, self-contained, streams progress;
-//!   * Valve's steamcmd — used when the user already has it.
+//!   * SteamRE/DepotDownloader - auto-fetched, self-contained, streams progress;
+//!   * Valve's steamcmd - used when the user already has it.
 //!
 //! Both are driven as a child process with piped stdio so Steam Guard prompts can
 //! be answered from the UI and every line of output lands in the launcher log.
@@ -78,7 +78,7 @@ pub fn resolve_backend(app: &AppHandle, state: &AppState) -> Result<(DepotBacken
             if managed.exists() {
                 return Ok((DepotBackend::DepotDownloader, managed));
             }
-            Err("DepotDownloader is not installed yet — press Install toolchain".into())
+            Err("DepotDownloader is not installed yet - press Install toolchain".into())
         }
         DepotBackend::SteamCmd => {
             if !settings.steamcmd_path.trim().is_empty() {
@@ -90,7 +90,7 @@ pub fn resolve_backend(app: &AppHandle, state: &AppState) -> Result<(DepotBacken
             if let Some(found) = find_steamcmd() {
                 return Ok((DepotBackend::SteamCmd, found));
             }
-            Err("steamcmd.exe not found — set its path in Settings or switch backend".into())
+            Err("steamcmd.exe not found - set its path in Settings or switch backend".into())
         }
     }
 }
@@ -309,7 +309,7 @@ pub fn start_download(
         {
             let Ok(mut guard) = state.job.lock() else { return };
             let Some(job) = guard.as_mut() else {
-                // Cancelled from the UI — the cancel path already emitted.
+                // Cancelled from the UI - the cancel path already emitted.
                 return;
             };
             match job.child.try_wait() {
@@ -583,7 +583,7 @@ fn parse_percent(line: &str) -> Option<f64> {
     None
 }
 
-/// Feed a line to the running process — Steam Guard codes, password prompts.
+/// Feed a line to the running process - Steam Guard codes, password prompts.
 pub fn send_input(app: &AppHandle, text: String) -> Result<(), String> {
     let state = app.state::<AppState>();
     let mut guard = state.job.lock().map_err(|_| "job lock poisoned")?;

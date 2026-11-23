@@ -114,7 +114,7 @@ export function errText(err: unknown): string {
 }
 
 export function bytes(n: number): string {
-  if (!n) return "—";
+  if (!n) return "-";
   const units = ["B", "KB", "MB", "GB"];
   let v = n;
   let i = 0;

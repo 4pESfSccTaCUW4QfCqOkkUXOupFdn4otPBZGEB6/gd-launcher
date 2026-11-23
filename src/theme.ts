@@ -1,7 +1,7 @@
 /**
  * Colour themes. Each one is a ground plus an accent; everything else in the UI is
  * a grey derived from the ground, so no theme can end up fighting itself. The
- * actual values live in `styles.css` under `[data-theme="…"]` — this list only
+ * actual values live in `styles.css` under `[data-theme="…"]` - this list only
  * drives the picker and the two swatch colours.
  */
 export interface Theme {
@@ -35,7 +35,7 @@ export function storedTheme(): string {
     const saved = window.localStorage.getItem(KEY);
     if (saved && isTheme(saved)) return saved;
   } catch {
-    // Private mode or a locked store — fall through to the default.
+    // Private mode or a locked store - fall through to the default.
   }
   return DEFAULT_THEME;
 }

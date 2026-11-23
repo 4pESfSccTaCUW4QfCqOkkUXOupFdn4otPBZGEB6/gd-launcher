@@ -115,13 +115,13 @@ export default function App() {
         // login token is in DepotDownloader's store, so the scan is not offered.
         listen<boolean>("steam://qr-done", () => {
           setJob((j) => ({ ...j, qr: null }));
-          notify("steam session stored — next pull signs in on its own", "ok");
+          notify("steam session stored. next pull signs in on its own", "ok");
           void reload();
         }),
         // The cached key was rejected. The backend already deleted it, so a
         // reload brings the QR flow back.
         listen<string>("steam://auth-needed", () => {
-          notify("steam session expired — sign in with QR again", "error");
+          notify("steam session expired. sign in with QR again", "error");
           void reload();
         }),
       ]);

@@ -6,7 +6,7 @@
 //!   %LOCALAPPDATA%\IsolatedStorage\<user>\<assembly>\<domain>\AssemFiles\account.config
 //!
 //! The assembly and domain segments are hashes of the assembly identity, so they
-//! change with every DepotDownloader release — the file has to be found by walking
+//! change with every DepotDownloader release - the file has to be found by walking
 //! the store, never by a fixed path.
 //!
 //! The file is a raw-deflate-wrapped protobuf `AccountSettingsStore`. The login
@@ -29,7 +29,7 @@ pub struct DepotSession {
     pub username: String,
     /// The store file the token was read from, for the settings page.
     pub path: String,
-    /// Unix seconds — when DepotDownloader last wrote the token.
+    /// Unix seconds - when DepotDownloader last wrote the token.
     pub updated_at: i64,
 }
 
@@ -133,7 +133,7 @@ pub fn cached_session(extra: &[PathBuf]) -> Option<DepotSession> {
 }
 
 /// Delete every store file that holds a token. Used by "reset session" and when a
-/// pull comes back with a dead key — a token Steam has rejected is rubbish, and
+/// pull comes back with a dead key - a token Steam has rejected is rubbish, and
 /// keeping it only makes the UI claim a session that is not there.
 pub fn forget(extra: &[PathBuf]) -> usize {
     let mut removed = 0usize;
@@ -186,7 +186,7 @@ fn first_token(blob: &[u8]) -> Option<(String, String)> {
         let field = tag >> 3;
         let wire = tag & 7;
         match wire {
-            // varint — skip the value.
+            // varint - skip the value.
             0 => {
                 read_varint(blob, &mut pos)?;
             }

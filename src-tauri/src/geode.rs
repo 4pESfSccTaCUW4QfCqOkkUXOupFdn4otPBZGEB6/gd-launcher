@@ -2,7 +2,7 @@
 //!
 //! Mods are `.geode` files (plain zips with a `mod.json` at the root) dropped into
 //! `<instance>/geode/mods`. The loader bundle is a flat zip unpacked over the
-//! instance root — it carries Geode.dll plus the XInput1_4.dll proxy.
+//! instance root - it carries Geode.dll plus the XInput1_4.dll proxy.
 
 use crate::util;
 use serde::{Deserialize, Serialize};
@@ -70,7 +70,7 @@ struct ApiEnvelope<T> {
 struct SearchPayload {
     #[serde(default)]
     data: Vec<RawMod>,
-    /// Total matches for the query — the index reports this as `count`, not `total`.
+    /// Total matches for the query - the index reports this as `count`, not `total`.
     #[serde(default)]
     count: u64,
 }
@@ -226,7 +226,7 @@ pub async fn install_mod(instance_path: &Path, card: &ModCard) -> Result<String,
         let digest: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
         if digest != card.hash.to_lowercase() {
             return Err(format!(
-                "{} failed the index hash check — refusing to install a corrupted build",
+                "{} failed the index hash check - refusing to install a corrupted build",
                 card.id
             ));
         }
@@ -450,7 +450,7 @@ pub async fn install_loader_in(
         let digest = util::sha256_file(&zip_path)?;
         if digest != picked.hash.to_lowercase() {
             let _ = std::fs::remove_file(&zip_path);
-            return Err("loader bundle failed its hash check — re-run the install".into());
+            return Err("loader bundle failed its hash check - re-run the install".into());
         }
     }
     util::extract_zip(&zip_path, instance_path)?;

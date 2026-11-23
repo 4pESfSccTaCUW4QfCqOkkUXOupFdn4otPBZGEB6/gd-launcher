@@ -217,7 +217,7 @@ export default function InstancePage({
     if (!mh || !mhRelease) return;
     try {
       await api.openUrl(mh.store_url);
-      notify(`opened the store — pick ${mhRelease.version}`, "ok");
+      notify(`opened the store, pick ${mhRelease.version}`, "ok");
     } catch (err) {
       notify(errText(err), "error");
     }
@@ -230,7 +230,7 @@ export default function InstancePage({
     try {
       const report = await api.megaHackInstall(instanceId, mhRelease.version);
       notify(
-        `Mega Hack ${report.bundle.version} installed — ${report.geode ? "geode package" : `${report.files.length} files`}`,
+        `Mega Hack ${report.bundle.version} installed, ${report.geode ? "geode package" : `${report.files.length} files`}`,
         "ok",
       );
       setMhHave(await api.megaHackInstalled(instanceId));
@@ -323,13 +323,13 @@ export default function InstancePage({
         <div className="panel">
           <dl className="kv">
             <dt>version</dt>
-            <dd>{inst.version || "—"}</dd>
+            <dd>{inst.version || "-"}</dd>
             <dt>steam build</dt>
-            <dd>{inst.build_id || "—"}</dd>
+            <dd>{inst.build_id || "-"}</dd>
             <dt>manifest</dt>
-            <dd>{inst.manifest_id || "—"}</dd>
+            <dd>{inst.manifest_id || "-"}</dd>
             <dt>depot</dt>
-            <dd>{inst.depot_id || "—"}</dd>
+            <dd>{inst.depot_id || "-"}</dd>
             <dt>on disk</dt>
             <dd>
               {inst.size_human} · {inst.has_exe ? "executable present" : "executable missing"}
@@ -346,7 +346,7 @@ export default function InstancePage({
 
           {!inst.linked && (
             <details className="disclosure">
-              <summary>advanced — pull or repair this build by manifest</summary>
+              <summary>advanced: pull or repair this build by manifest</summary>
               <div className="two-col" style={{ marginTop: 14 }}>
                 <label className="field">
                   <span>manifest gid</span>
@@ -364,7 +364,7 @@ export default function InstancePage({
               {session.signed_in ? (
                 <div className="hint" style={{ marginBottom: 10 }}>
                   steam session cached for{" "}
-                  <b style={{ color: "var(--text)" }}>{session.username || "this account"}</b> — the
+                  <b style={{ color: "var(--text)" }}>{session.username || "this account"}</b>. The
                   pull authenticates on its own.
                 </div>
               ) : (
@@ -429,7 +429,7 @@ export default function InstancePage({
                 <b>
                   {[mhRelease.geode ? "geode" : "", mhRelease.standalone ? "standalone" : ""]
                     .filter(Boolean)
-                    .join(" · ") || "—"}
+                    .join(" · ") || "-"}
                 </b>
               </span>
               <span>
@@ -490,8 +490,8 @@ export default function InstancePage({
             <div className="hint" style={{ marginTop: 10 }}>
               {mhAvail
                 ? mhRelease.paid && !mhLicense?.signed_in
-                  ? "This release is paid. Sign in once in Absolute's installer — the license it writes lives in %LOCALAPPDATA%\\absolllute.megahack and the launcher picks it up from there."
-                  : `Downloads ${mhAvail.geode ? "the Geode package" : "the standalone DLLs"} straight into this instance — no folder picker, no Detect Geometry Dash, and never the Steam copy unless this instance points at it.`
+                  ? "This release is paid. Sign in once in Absolute's installer. The license it writes lives in %LOCALAPPDATA%\\absolllute.megahack and the launcher picks it up from there."
+                  : `Downloads ${mhAvail.geode ? "the Geode package" : "the standalone DLLs"} straight into this instance. No folder picker, no Detect Geometry Dash, and never the Steam copy unless this instance points at it.`
                 : "The catalogue does not serve this release, so there is nothing to download here. Open the store and grab it there."}
               {below22 && " Geode-only releases are not in the list: there is no Geode below 2.2."}
             </div>
@@ -539,7 +539,7 @@ export default function InstancePage({
           <h3>geode loader</h3>
           <div className="panel">
             <div className="hint" style={{ marginTop: 0 }}>
-              Unavailable on {inst.version || "this build"} — Geode requires 2.2 or newer. Use
+              Unavailable on {inst.version || "this build"}. Geode requires 2.2 or newer. Use
               Mega Hack {mh?.major ?? "v5"} above.
             </div>
           </div>
@@ -569,7 +569,7 @@ export default function InstancePage({
                       )}
                     </div>
                     <div className="row-desc">
-                      {mod.developer ? `${mod.developer} — ` : ""}
+                      {mod.developer ? `${mod.developer}, ` : ""}
                       {mod.description || mod.id}
                     </div>
                   </div>

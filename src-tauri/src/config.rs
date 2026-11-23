@@ -19,7 +19,7 @@ pub const GD_SHARED_DEPOT: &str = "228989";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DepotBackend {
-    /// SteamRE/DepotDownloader — self-contained, auto-fetched on first use.
+    /// SteamRE/DepotDownloader - self-contained, auto-fetched on first use.
     DepotDownloader,
     /// Valve's steamcmd. Requires a separate install.
     SteamCmd,
@@ -117,7 +117,7 @@ impl Config {
             Err(_) => return Self::default(),
         };
         // A bad document is worth keeping on disk for inspection but must not
-        // block startup — fall back to defaults and let the user re-add instances.
+        // block startup - fall back to defaults and let the user re-add instances.
         match serde_json::from_str::<Config>(&raw) {
             Ok(cfg) => cfg,
             Err(err) => {
@@ -158,7 +158,7 @@ pub fn data_root(app: &tauri::AppHandle) -> PathBuf {
 /// pre-release data in a sibling folder. No folder name is hard-coded: a
 /// sibling counts as a previous root only when its `config.json` parses as this
 /// `Config` *and* lists an instance that lives inside it. That signature is
-/// this app's own layout — nothing else on disk produces it — so the scan can
+/// this app's own layout - nothing else on disk produces it - so the scan can
 /// never grab another program's folder.
 fn find_previous_root(parent: &Path, current: &Path) -> Option<PathBuf> {
     let mut candidates: Vec<PathBuf> = std::fs::read_dir(parent)
@@ -193,7 +193,7 @@ pub fn migrate_legacy_root(dir: &Path) -> bool {
     let Some(old) = find_previous_root(parent, dir) else {
         return false;
     };
-    // Same volume, so this is a rename, not a copy — 3 GB of instances does not
+    // Same volume, so this is a rename, not a copy - 3 GB of instances does not
     // get duplicated.
     if std::fs::rename(&old, dir).is_err() {
         return false;
@@ -272,7 +272,7 @@ pub fn slug(input: &str) -> String {
 mod tests {
     use super::*;
 
-    /// Fresh, empty scratch directory per test — the migration moves real
+    /// Fresh, empty scratch directory per test - the migration moves real
     /// folders around, so nothing may touch the live app data dir.
     fn scratch(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("gd-launcher-test-{tag}"));

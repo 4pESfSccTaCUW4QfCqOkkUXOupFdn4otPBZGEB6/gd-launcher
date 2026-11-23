@@ -189,7 +189,7 @@ export default function Library(props: Props) {
               <div className="hint" style={{ marginBottom: 12 }}>
                 {mode === "copy"
                   ? "Duplicates the install into the launcher folder. Steam keeps its own copy; mods stay separate."
-                  : "Points the launcher at the live Steam folder. Geode mods land in your real install — no duplicate disk use."}
+                  : "Points the launcher at the live Steam folder. Geode mods land in your real install. No duplicate disk use."}
               </div>
 
               <div className="list">

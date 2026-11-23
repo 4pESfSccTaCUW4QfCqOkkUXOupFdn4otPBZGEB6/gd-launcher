@@ -141,7 +141,7 @@ export default function BrowseMods({
         <div className="grow">
           <input
             value={query}
-            placeholder="search the index — betterinfo, globed, texture loader…"
+            placeholder="search the index. betterinfo, globed, texture loader…"
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {

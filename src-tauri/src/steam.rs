@@ -59,7 +59,7 @@ pub fn steam_root() -> Option<PathBuf> {
             }
         }
     }
-    // Registry miss (portable install) — try the two default locations.
+    // Registry miss (portable install) - try the two default locations.
     for candidate in [
         r"C:\Program Files (x86)\Steam",
         r"C:\Program Files\Steam",
@@ -112,7 +112,7 @@ fn quoted_pair(line: &str) -> Option<(String, String)> {
     Some((key, val))
 }
 
-/// A line that is nothing but one quoted token — how `loginusers.vdf` opens an
+/// A line that is nothing but one quoted token - how `loginusers.vdf` opens an
 /// account block (`"76561199402092901"`). `quoted_pair` needs two, so those
 /// headers are read here instead.
 fn quoted_key(line: &str) -> Option<&str> {
@@ -341,7 +341,7 @@ fn active_account_id() -> Option<u32> {
     (user != 0).then_some(user)
 }
 
-/// Everything `loginusers.vdf` knows. Passwords are not in there — Valve stopped
+/// Everything `loginusers.vdf` knows. Passwords are not in there - Valve stopped
 /// storing them; the client keeps a refresh token instead.
 pub fn steam_accounts() -> Vec<SteamAccount> {
     let Some(root) = steam_root() else {

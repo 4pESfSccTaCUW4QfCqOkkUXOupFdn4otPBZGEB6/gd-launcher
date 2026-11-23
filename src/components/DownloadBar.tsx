@@ -88,7 +88,7 @@ export default function DownloadBar({ job, onCancel, onSend, onDismiss }: Props)
         <div className="stdin-row">
           <input
             value={line}
-            placeholder="Steam Guard code / password prompt — type here and press Enter"
+            placeholder="Steam Guard code or password prompt. Type here and press Enter"
             onChange={(e) => setLine(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") submit();

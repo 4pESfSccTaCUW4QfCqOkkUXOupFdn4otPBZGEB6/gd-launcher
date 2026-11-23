@@ -27,7 +27,7 @@ struct AppStateView {
     steam_installs: Vec<steam::SteamInstall>,
     data_dir: String,
     instances_dir: String,
-    /// The real answer to "is Steam already signed in?" — read from
+    /// The real answer to "is Steam already signed in?" - read from
     /// DepotDownloader's own token store, not from a flag we set once.
     depot_session: depot_session::DepotSession,
 }
@@ -104,7 +104,7 @@ fn find_steam_installs() -> Vec<steam::SteamInstall> {
 }
 
 /// The account the depot pull will authenticate as, read straight from the local
-/// Steam client. Passwords are not on disk — Valve keeps a refresh token — so this
+/// Steam client. Passwords are not on disk - Valve keeps a refresh token - so this
 /// is the username only.
 #[tauri::command]
 fn steam_account() -> Option<steam::SteamAccount> {
@@ -401,7 +401,7 @@ fn import_steam_install(
     let source = PathBuf::from(&install.path);
     if !steam::looks_like_gd(&source) {
         return Err(format!(
-            "{} has no GeometryDash.exe — that library entry is stale",
+            "{} has no GeometryDash.exe - that library entry is stale",
             source.display()
         ));
     }
@@ -552,7 +552,7 @@ fn start_depot_download(
         .cloned()
         .ok_or("unknown instance")?;
     if instance.linked {
-        return Err("this instance points at a live Steam folder — copy it first".into());
+        return Err("this instance points at a live Steam folder - copy it first".into());
     }
     if request.manifest_id.trim().is_empty() {
         return Err("a manifest id is required to pull a specific build".into());
@@ -604,7 +604,7 @@ async fn install_mod(
         PathBuf::from(&instance.path)
     };
     if !geode::loader_present(&path) {
-        return Err("Geode is not installed in this instance — install the loader first".into());
+        return Err("Geode is not installed in this instance - install the loader first".into());
     }
     let card = geode::mod_detail(&mod_id).await?;
     geode::install_mod(&path, &card).await?;
@@ -682,7 +682,7 @@ fn run_installer(
 
 #[tauri::command]
 fn reset_steam_session(app: AppHandle, state: State<'_, AppState>) -> Result<usize, String> {
-    // Delete the cached login token itself — a flag would only hide it and leave a
+    // Delete the cached login token itself - a flag would only hide it and leave a
     // dead key on disk claiming a session that is not there.
     let removed = depot_session::forget(&session_paths(&app));
     {
@@ -713,7 +713,7 @@ async fn mega_hack_available(
 }
 
 /// Download and install Mega Hack into an instance. No installer window, no folder
-/// picker — the archive lands where the game looks.
+/// picker - the archive lands where the game looks.
 #[tauri::command]
 async fn mega_hack_install(
     app: AppHandle,
@@ -789,7 +789,7 @@ async fn install_loader(
         // hand-edited config from writing a loader into a 2.1 install.
         if mh::below_2_2(&instance.version) {
             return Err(format!(
-                "Geode requires Geometry Dash 2.2 or newer — {} uses Mega Hack",
+                "Geode requires Geometry Dash 2.2 or newer - {} uses Mega Hack",
                 instance.version
             ));
         }

@@ -16,7 +16,7 @@ pub struct RunningJob {
 pub struct AppState {
     pub config: Mutex<Config>,
     pub data_dir: PathBuf,
-    /// Only one depot download at a time — two DepotDownloader processes writing
+    /// Only one depot download at a time - two DepotDownloader processes writing
     /// into the same Steam CDN cache is how you get half-written chunks.
     pub job: Mutex<Option<RunningJob>>,
 }

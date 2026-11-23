@@ -1,4 +1,4 @@
-//! `gd` — GD Launcher in a terminal.
+//! `gd` - GD Launcher in a terminal.
 //!
 //! Same data folder, same `config.json`, same depot manifests and the same
 //! DepotDownloader invocation as the window. An instance created here shows up
@@ -86,7 +86,7 @@ async fn dispatch(
             print_help();
             Ok(())
         }
-        other => Err(format!("unknown command `{other}` — try `gd help`")),
+        other => Err(format!("unknown command `{other}` - try `gd help`")),
     }
 }
 
@@ -95,7 +95,7 @@ async fn dispatch(
 fn default_data_dir() -> Result<PathBuf, String> {
     let base = std::env::var_os("APPDATA")
         .map(PathBuf::from)
-        .ok_or("APPDATA is not set — pass --data-dir")?;
+        .ok_or("APPDATA is not set - pass --data-dir")?;
     Ok(base.join(APP_ID))
 }
 
@@ -169,7 +169,7 @@ fn short_id(id: &str) -> String {
 /// Shared stderr writer: one live progress line, QR art that clears it first,
 /// and a tail of recent log lines kept for the failure message.
 ///
-/// The live line is only drawn when stderr is a terminal — piping `gd install`
+/// The live line is only drawn when stderr is a terminal - piping `gd install`
 /// into a file must not fill it with carriage returns and escape codes.
 struct Printer {
     verbose: bool,
@@ -296,7 +296,7 @@ fn pump_stream<R: std::io::Read>(
                 }
                 depot::PumpEvent::AuthFailed(line) => {
                     if let Ok(mut out) = printer.lock() {
-                        out.note(&format!("steam rejected the cached key ({line}) — `gd login`"));
+                        out.note(&format!("steam rejected the cached key ({line}) - `gd login`"));
                     }
                 }
             }
@@ -330,7 +330,7 @@ fn resolve_backend(
             if let Some(found) = depot::find_steamcmd() {
                 return Ok((DepotBackend::SteamCmd, found));
             }
-            Err("steamcmd.exe not found — set its path in `gd doctor` output".into())
+            Err("steamcmd.exe not found - set its path in `gd doctor` output".into())
         }
     }
 }
@@ -341,7 +341,7 @@ async fn fetch_depotdownloader(dir: &Path) -> Result<PathBuf, String> {
     std::fs::create_dir_all(&tools).map_err(|e| format!("create {tools:?}: {e}"))?;
     let zip = tools.join("depotdownloader.zip");
 
-    eprintln!("  no DepotDownloader yet — fetching the 32 MB toolchain");
+    eprintln!("  no DepotDownloader yet - fetching the 32 MB toolchain");
     let tty = {
         use std::io::IsTerminal;
         std::io::stderr().is_terminal()
@@ -449,7 +449,7 @@ async fn pull(
     }
 
     if !login.use_qr && !login.username.trim().is_empty() && first.stale_key() {
-        eprintln!("  the cached steam key is not readable from this install — scanning a code once");
+        eprintln!("  the cached steam key is not readable from this install - scanning a code once");
         let qr = Login {
             username: String::new(),
             password: String::new(),
@@ -559,7 +559,7 @@ async fn run_pull(
 fn cmd_list(dir: &Path) -> Result<(), String> {
     let cfg = Config::load(dir);
     if cfg.instances.is_empty() {
-        println!("no instances yet — `gd versions` then `gd install <version>`");
+        println!("no instances yet - `gd versions` then `gd install <version>`");
         return Ok(());
     }
 
@@ -608,17 +608,29 @@ struct InstallOpts {
     name: Option<String>,
     anonymous: bool,
     qr: bool,
+    /// Skip every question and take the defaults.
+    yes: bool,
+    /// Install this Mega Hack release without asking.
+    mh: Option<String>,
+    /// Never offer Mega Hack.
+    no_mh: bool,
 }
 
 fn parse_install(args: &[String]) -> Result<InstallOpts, String> {
     let mut rest: Vec<String> = args.to_vec();
     let manifest = take_value(&mut rest, "--manifest");
     let name = take_value(&mut rest, "--name");
+    let mh = take_value(&mut rest, "--mh");
     let anonymous = take_flag(&mut rest, "--anonymous") | take_flag(&mut rest, "--anon");
     let qr = take_flag(&mut rest, "--qr");
+    let yes = take_flag(&mut rest, "--yes") | take_flag(&mut rest, "-y");
+    let no_mh = take_flag(&mut rest, "--no-mh");
 
     let Some(version) = rest.into_iter().next() else {
-        return Err("usage: gd install <version> [--name X] [--manifest ID] [--qr]".into());
+        return Err(
+            "usage: gd install <version> [--name X] [--manifest ID] [--mh RELEASE] [--no-mh] [--qr]"
+                .into(),
+        );
     };
     Ok(InstallOpts {
         version,
@@ -626,7 +638,74 @@ fn parse_install(args: &[String]) -> Result<InstallOpts, String> {
         name,
         anonymous,
         qr,
+        yes,
+        mh,
+        no_mh,
     })
+}
+
+// ------------------------------------------------------------------ questions
+
+/// One line from stdin. `None` on end of input, so a scripted run falls back to
+/// the default instead of hanging.
+fn read_answer() -> Option<String> {
+    let mut buffer = String::new();
+    match std::io::stdin().read_line(&mut buffer) {
+        Ok(0) => None,
+        Ok(_) => Some(buffer.trim().to_string()),
+        Err(_) => None,
+    }
+}
+
+fn ask(label: &str, default: &str) -> String {
+    if default.is_empty() {
+        eprint!("{label}: ");
+    } else {
+        eprint!("{label} [{default}]: ");
+    }
+    let _ = std::io::stderr().flush();
+    match read_answer() {
+        Some(answer) if !answer.is_empty() => answer,
+        _ => default.to_string(),
+    }
+}
+
+fn ask_yes_no(label: &str, default_yes: bool) -> bool {
+    let hint = if default_yes { "Y/n" } else { "y/N" };
+    loop {
+        eprint!("{label} ({hint}): ");
+        let _ = std::io::stderr().flush();
+        match read_answer() {
+            None => return default_yes,
+            Some(answer) => match answer.to_ascii_lowercase().as_str() {
+                "" => return default_yes,
+                "y" | "yes" => return true,
+                "n" | "no" => return false,
+                _ => eprintln!("  y or n"),
+            },
+        }
+    }
+}
+
+fn pick_bundle<'a>(
+    options: &[&'a mh_install::Bundle],
+    answer: &str,
+) -> Option<&'a mh_install::Bundle> {
+    if let Ok(index) = answer.parse::<usize>() {
+        if index >= 1 && index <= options.len() {
+            return options.get(index - 1).copied();
+        }
+    }
+    options
+        .iter()
+        .copied()
+        .find(|bundle| bundle.version.eq_ignore_ascii_case(answer))
+}
+
+/// A Mega Hack release the user picked before the download started.
+struct MhChoice {
+    release: String,
+    geode: bool,
 }
 
 async fn cmd_install(dir: &Path, args: &[String], verbose: bool) -> Result<(), String> {
@@ -651,20 +730,27 @@ async fn cmd_install(dir: &Path, args: &[String], verbose: bool) -> Result<(), S
         }
         (None, _) => {
             return Err(format!(
-                "no bundled build called {} — `gd versions` lists them, or pass --manifest",
+                "no bundled build called {} - `gd versions` lists them, or pass --manifest",
                 opts.version
             ))
         }
     };
 
+    // Everything the run needs to know is asked up front, so a slow pull is the
+    // last thing that happens and nobody is staring at a finished download
+    // waiting to answer a question.
+    let default_name = format!("Geometry Dash {version}");
+    let name = match (&opts.name, opts.yes) {
+        (Some(given), _) => given.clone(),
+        (None, true) => default_name.clone(),
+        (None, false) => ask("name the instance", &default_name),
+    };
+    let mh_choice = plan_mega_hack(dir, &version, &opts).await?;
+
     let mut cfg = Config::load(dir);
     let root = instances_root(dir, &cfg.settings);
     std::fs::create_dir_all(&root).map_err(|e| format!("create {root:?}: {e}"))?;
 
-    let name = opts
-        .name
-        .clone()
-        .unwrap_or_else(|| format!("Geometry Dash {version}"));
     let target = instance::unique_dir(&root, &name, &version);
     std::fs::create_dir_all(&target).map_err(|e| format!("create {target:?}: {e}"))?;
 
@@ -695,7 +781,7 @@ async fn cmd_install(dir: &Path, args: &[String], verbose: bool) -> Result<(), S
         Login::anonymous()
     } else if opts.qr || !cached.signed_in {
         if !cached.signed_in && !opts.qr {
-            eprintln!("  no steam session — scan the code below with the Steam app");
+            eprintln!("  no steam session - scan the code below with the Steam app");
         }
         Login {
             username: String::new(),
@@ -728,7 +814,166 @@ async fn cmd_install(dir: &Path, args: &[String], verbose: bool) -> Result<(), S
         util::human_bytes(size),
         count_files(&target)
     );
+
+    if let Some(choice) = mh_choice {
+        apply_mega_hack(dir, &record, &choice, verbose).await;
+    }
+
+    println!("launch    gd launch {}", short_id(&record.id));
     Ok(())
+}
+
+/// Decide which Mega Hack release goes on the instance, before anything is
+/// downloaded.
+///
+/// Only offered below 2.2, where Geode does not exist yet. A fresh instance has
+/// no loader on disk, so only standalone packages can be picked here; the Geode
+/// ones need `gd loader` first. The list comes from Absolute's own catalogue, so
+/// a build with no package says so and points at the store instead of being
+/// handed the wrong DLL.
+async fn plan_mega_hack(
+    dir: &Path,
+    version: &str,
+    opts: &InstallOpts,
+) -> Result<Option<MhChoice>, String> {
+    if opts.no_mh {
+        return Ok(None);
+    }
+    // --yes means take the defaults, and the default answer here is no. Skip the
+    // catalogue fetch rather than pulling it down to decide nothing.
+    if opts.yes && opts.mh.is_none() {
+        return Ok(None);
+    }
+
+    let below = mh::below_2_2(version);
+    let forced = opts.mh.is_some();
+    if !below && !forced {
+        return Ok(None);
+    }
+
+    let bundles = mh_install::catalog_in(&mh_cache(dir))
+        .await
+        .unwrap_or_default();
+    let for_build: Vec<&mh_install::Bundle> = bundles
+        .iter()
+        .filter(|bundle| bundle.gjver == version)
+        .collect();
+    let available: Vec<&mh_install::Bundle> =
+        for_build.iter().copied().filter(|b| !b.geode).collect();
+
+    if available.is_empty() {
+        if forced {
+            return Err(format!("mega hack has no package for {version}"));
+        }
+        eprintln!();
+        if for_build.is_empty() {
+            eprintln!("mega hack  no package for {version}");
+            if let Some(closest) = mh::recommended(version) {
+                eprintln!(
+                    "           closest is {} for {}; get it from https://absolllute.com/store",
+                    closest.version, closest.game
+                );
+            }
+        } else {
+            eprintln!("mega hack  {version} only has a Geode package");
+            eprintln!("           gd loader <instance> install, then gd mh <instance> install");
+        }
+        return Ok(None);
+    }
+
+    let licence = mh_install::license_status().signed_in;
+    let default_bundle = mh_install::pick_for(&bundles, version, "", false);
+
+    if let Some(name) = &opts.mh {
+        let Some(found) = available
+            .iter()
+            .copied()
+            .find(|bundle| bundle.version.eq_ignore_ascii_case(name))
+        else {
+            return Err(format!("mega hack {name} is not published for {version}"));
+        };
+        return Ok(Some(MhChoice {
+            release: found.version.clone(),
+            geode: found.geode,
+        }));
+    }
+
+    if opts.yes {
+        return Ok(None);
+    }
+
+    eprintln!();
+    if !ask_yes_no(&format!("install mega hack for {version}?"), false) {
+        return Ok(None);
+    }
+    eprintln!();
+    for (index, bundle) in available.iter().enumerate() {
+        let channel = if bundle.geode { "geode" } else { "standalone" };
+        let cost = match (bundle.paid(), licence) {
+            (false, _) => "free",
+            (true, true) => "paid",
+            (true, false) => "paid, needs an Absolute account",
+        };
+        let is_default = default_bundle
+            .map(|d| d.version == bundle.version && d.file == bundle.file)
+            .unwrap_or(false);
+        eprintln!(
+            "  {}) {:<16} {:<10} {}{}",
+            index + 1,
+            bundle.version,
+            channel,
+            cost,
+            if is_default { "  <- default" } else { "" }
+        );
+    }
+    let fallback = default_bundle
+        .map(|bundle| bundle.version.clone())
+        .unwrap_or_else(|| available[0].version.clone());
+    loop {
+        let answer = ask("release", &fallback);
+        let Some(picked) = pick_bundle(&available, &answer) else {
+            eprintln!("  no release called `{answer}` in that list");
+            continue;
+        };
+        if picked.paid() && !licence {
+            eprintln!(
+                "  {} is paid and needs an Absolute account; pick a free one or sign in first",
+                picked.version
+            );
+            continue;
+        }
+        return Ok(Some(MhChoice {
+            release: picked.version.clone(),
+            geode: picked.geode,
+        }));
+    }
+}
+
+/// Drop the chosen release into an instance that just finished downloading.
+/// A failure here leaves a playable build, so it warns instead of aborting.
+async fn apply_mega_hack(dir: &Path, record: &Instance, choice: &MhChoice, verbose: bool) {
+    let path = PathBuf::from(&record.path);
+    let mut printer = Printer::new(verbose);
+    let report = mh_install::install_in(
+        &mh_cache(dir),
+        &path,
+        &record.version,
+        &choice.release,
+        choice.geode,
+        |progress| printer.progress(progress.percent, &progress.label),
+    )
+    .await;
+    printer.finish();
+
+    match report {
+        Ok(report) => println!(
+            "megahack  {}  {} files  {}",
+            report.bundle.version,
+            report.files.len(),
+            util::human_bytes(report.bytes)
+        ),
+        Err(err) => eprintln!("  mega hack skipped: {err}"),
+    }
 }
 
 fn count_files(root: &Path) -> usize {
@@ -844,7 +1089,7 @@ fn cmd_steam(dir: &Path) -> Result<(), String> {
             }
         );
     } else {
-        println!("  no cached login — `gd login` scans a QR once");
+        println!("  no cached login - `gd login` scans a QR once");
     }
     Ok(())
 }
@@ -867,7 +1112,7 @@ fn cmd_import(dir: &Path, args: &[String], verbose: bool) -> Result<(), String> 
     let source = PathBuf::from(&install.path);
     if !steam::looks_like_gd(&source) {
         return Err(format!(
-            "{} has no GeometryDash.exe — that library entry is stale",
+            "{} has no GeometryDash.exe - that library entry is stale",
             source.display()
         ));
     }
@@ -881,7 +1126,7 @@ fn cmd_import(dir: &Path, args: &[String], verbose: bool) -> Result<(), String> 
         (source.clone(), true)
     } else {
         let target = instance::unique_dir(&root, &label, &install.build_id);
-        eprintln!("  copying {} — this takes a minute", source.display());
+        eprintln!("  copying {} - this takes a minute", source.display());
         let tty = {
             use std::io::IsTerminal;
             std::io::stderr().is_terminal()
@@ -960,7 +1205,7 @@ async fn cmd_login(dir: &Path, args: &[String], verbose: bool) -> Result<(), Str
     let scratch = dir.join("tmp").join("login");
 
     eprintln!(
-        "  signing in — this pulls Geometry Dash {} once (~40 MB), then deletes it",
+        "  signing in - this pulls Geometry Dash {} once (~40 MB), then deletes it",
         smallest.version
     );
 
@@ -986,7 +1231,7 @@ async fn cmd_login(dir: &Path, args: &[String], verbose: bool) -> Result<(), Str
     if after.signed_in {
         println!("signed in  {}", after.username);
     } else {
-        println!("pull finished but no token was written — check the Steam app");
+        println!("pull finished but no token was written - check the Steam app");
     }
     Ok(())
 }
@@ -1019,7 +1264,7 @@ async fn cmd_mega_hack(dir: &Path, args: &[String], verbose: bool) -> Result<(),
             if license.signed_in {
                 format!("token {} on disk", license.masked)
             } else {
-                "no Absolute account — paid releases will not install".into()
+                "no Absolute account - paid releases will not install".into()
             }
         );
         match &installed {
@@ -1158,7 +1403,7 @@ async fn cmd_mods(dir: &Path, args: &[String]) -> Result<(), String> {
                 .cloned()
                 .ok_or("usage: gd mods <instance> install <mod-id>")?;
             if !geode::loader_present(&path) {
-                return Err("Geode is not installed here — `gd loader <instance> install`".into());
+                return Err("Geode is not installed here - `gd loader <instance> install`".into());
             }
             let card = geode::mod_detail(&mod_id).await?;
             let written = geode::install_mod(&path, &card).await?;
@@ -1235,21 +1480,21 @@ fn cmd_doctor(dir: &Path) -> Result<(), String> {
 
     match resolve_backend(dir, &cfg.settings) {
         Ok((_, exe)) => println!("toolchain   {}", exe.display()),
-        Err(err) => println!("toolchain   {err} — it is fetched on first install"),
+        Err(err) => println!("toolchain   {err} - it is fetched on first install"),
     }
 
     let cached = session(dir);
     if cached.signed_in {
         println!("session     {} ({})", cached.username, cached.path);
     } else {
-        println!("session     none — `gd login`");
+        println!("session     none - `gd login`");
     }
 
     let license = mh_install::license_status();
     if license.signed_in {
         println!("megahack    licence {} on disk", license.masked);
     } else {
-        println!("megahack    no Absolute account — paid releases are gated");
+        println!("megahack    no Absolute account - paid releases are gated");
     }
 
     println!("instances   {} managed", cfg.instances.len());
@@ -1293,7 +1538,7 @@ fn resolve<'a>(cfg: &'a Config, needle: &str) -> Result<&'a Instance, String> {
     }
 
     Err(format!(
-        "no instance called `{needle}` — `gd list` shows what is there"
+        "no instance called `{needle}` - `gd list` shows what is there"
     ))
 }
 
@@ -1302,7 +1547,7 @@ fn resolve<'a>(cfg: &'a Config, needle: &str) -> Result<&'a Instance, String> {
 fn print_help() {
     println!(
         "\
-gd — GD Launcher in a terminal
+gd - GD Launcher in a terminal
 
   gd list                        managed instances
   gd versions                    bundled game builds
@@ -1327,6 +1572,13 @@ gd — GD Launcher in a terminal
   gd loader <instance> install [version]
 
   gd doctor                      paths, toolchain and session
+
+install asks two things: what to call the instance, and for builds below 2.2,
+whether to put Mega Hack on it and which release.
+  --name <text>                  skip the name question
+  --mh <release>                 install that Mega Hack release, no questions
+  --no-mh                        never offer Mega Hack
+  -y, --yes                      take every default, ask nothing
 
 global
   --data-dir <path>              use a different data folder

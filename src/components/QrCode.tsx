@@ -24,7 +24,7 @@ export default function QrCode({ lines, size = 208 }: Props) {
     }
   }
 
-  // Square viewBox, square container, 100% fill — no overflow, so the code never
+  // Square viewBox, square container, 100% fill - no overflow, so the code never
   // bleeds past the white plate.
   const span = Math.max(rows, cols) + QUIET * 2;
 

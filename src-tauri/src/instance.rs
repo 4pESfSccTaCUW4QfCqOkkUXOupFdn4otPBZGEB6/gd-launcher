@@ -157,7 +157,7 @@ pub fn launch(instance: &Instance) -> Result<(), String> {
     Ok(())
 }
 
-/// Delete an instance folder. Only called for launcher-owned directories —
+/// Delete an instance folder. Only called for launcher-owned directories -
 /// linked Steam installs are unregistered, never deleted.
 pub fn delete_folder(path: &Path) -> Result<(), String> {
     if !path.exists() {

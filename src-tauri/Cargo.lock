@@ -1213,7 +1213,7 @@ dependencies = [
 
 [[package]]
 name = "gd-launcher"
-version = "1.1.1"
+version = "1.2.0"
 dependencies = [
  "flate2",
  "futures-util",

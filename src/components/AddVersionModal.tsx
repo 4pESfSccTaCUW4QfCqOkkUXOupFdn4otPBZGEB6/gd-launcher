@@ -62,7 +62,7 @@ export default function AddVersionModal({
 
   const pull = async (version: string, manifestId: string, depotId: string) => {
     if (!canPull) {
-      notify("no Steam account detected — pick one in Settings, or use QR sign-in", "error");
+      notify("no Steam account detected. pick one in Settings, or use QR sign-in", "error");
       return;
     }
     setBusy(manifestId);
@@ -124,7 +124,7 @@ export default function AddVersionModal({
                   </div>
                   <div className="hint">
                     Detected from your Steam client
-                    {account.active ? " — currently signed in" : ""}. No password needed; the
+                    {account.active ? " (currently signed in)" : ""}. No password needed; the
                     session is reused.
                   </div>
                 </>
@@ -188,14 +188,14 @@ export default function AddVersionModal({
                             </span>
                           )}
                         </td>
-                        <td className="mono">{row.source === "live" ? "now" : row.date || "—"}</td>
+                        <td className="mono">{row.source === "live" ? "now" : row.date || "-"}</td>
                         <td className="mono">{row.manifest_id}</td>
                         <td>
                           {row.mega_hack ? (
                             <span className="badge info">{row.mega_hack}</span>
                           ) : (
                             <span className="hint" style={{ marginTop: 0 }}>
-                              —
+                              -
                             </span>
                           )}
                         </td>
@@ -255,7 +255,7 @@ export default function AddVersionModal({
 
         <div className="modal-foot">
           <span className="hint" style={{ marginRight: "auto" }}>
-            Depot 322171, app 322170 — fixed. Every download lands in its own instance folder.
+            Depot 322171, app 322170, fixed. Every download lands in its own instance folder.
           </span>
           <button onClick={onClose}>Done</button>
         </div>

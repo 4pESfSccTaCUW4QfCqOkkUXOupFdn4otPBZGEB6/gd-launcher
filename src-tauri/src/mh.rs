@@ -3,7 +3,7 @@
 //! Geode only runs on 2.2 and up. Below that the tool of the era is Mega Hack, and
 //! which release you need is decided entirely by the game build. The table below is
 //! the full public Windows history from Absolute's version list, newest first, and it
-//! is the only place a release is named — the UI reads it, nothing is hard-coded in
+//! is the only place a release is named - the UI reads it, nothing is hard-coded in
 //! the front end.
 //!
 //! Rules:
@@ -12,7 +12,7 @@
 //!   - a build with no row of its own falls back to the newest release that lists an
 //!     older build, so nothing ever claims support it does not have;
 //!   - anything below 2.2 is a Mega Hack build by definition, and 2.113 and below get
-//!     the free v5 family by default — v6 and up are paid.
+//!     the free v5 family by default - v6 and up are paid.
 //!
 //! Nothing here downloads Mega Hack. The installers are account-gated (v6 and up) and
 //! there is no public direct URL, so the launcher resolves the release and hands the
@@ -163,7 +163,7 @@ pub struct MegaHackTarget {
     /// Recommended release, "Mega Hack v9.1.3".
     pub label: String,
     pub paid: bool,
-    /// True for builds older than 2.2 — no Geode, Mega Hack only.
+    /// True for builds older than 2.2 - no Geode, Mega Hack only.
     pub below_2_2: bool,
     /// Which game builds the recommendation covers, for display.
     pub covers: String,
@@ -193,7 +193,7 @@ pub fn parse_version(version: &str) -> Option<GdVersion> {
     let rest = trimmed.strip_prefix("2.").or_else(|| trimmed.strip_prefix("2,"))?;
     let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
     if digits.is_empty() {
-        // "2." alone — treat as 2.0
+        // "2." alone - treat as 2.0
         return Some(GdVersion {
             minor: 0,
             sub: String::new(),
@@ -206,7 +206,7 @@ pub fn parse_version(version: &str) -> Option<GdVersion> {
     })
 }
 
-/// True when the build is older than 2.2 — no Geode, Mega Hack territory.
+/// True when the build is older than 2.2 - no Geode, Mega Hack territory.
 pub fn below_2_2(version: &str) -> bool {
     match parse_version(version) {
         Some(v) => v.minor < 2,
@@ -252,7 +252,7 @@ fn is_beta(version: &str) -> bool {
 
 /// The releases the picker offers for a build, newest major first.
 ///
-/// One release per major, and only the newest *stable* one — a release with `alpha`
+/// One release per major, and only the newest *stable* one - a release with `alpha`
 /// or `beta` in the name is skipped whenever that major has a finished build. The
 /// only exception is a major that never shipped stable for the era at all: the 2.2
 /// line was alpha-only until v8.0.2, so those builds get the newest alpha of that
@@ -409,7 +409,7 @@ mod tests {
     #[test]
     fn stable_only_per_major() {
         // No alpha or beta in any option, unless that major never shipped stable for
-        // the era — the 2.2 line was alpha-only until v8.0.2.
+        // the era - the 2.2 line was alpha-only until v8.0.2.
         for build in ["2.113", "2.112", "2.0", "2.206", "2.2074", "2.2081"] {
             for release in options_for(build) {
                 assert!(

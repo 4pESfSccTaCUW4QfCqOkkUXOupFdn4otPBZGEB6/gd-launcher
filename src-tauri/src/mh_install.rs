@@ -8,7 +8,7 @@
 //! Each catalogue entry names a release, the game build it targets, whether it is
 //! the Geode or the standalone build, and the SHA-256 of the archive. So the
 //! launcher can do the whole job itself: resolve the entry for the instance, fetch
-//! the archive, verify it, and drop it where the game looks — no folder picker, no
+//! the archive, verify it, and drop it where the game looks - no folder picker, no
 //! "Detect Geometry Dash" guessing at the Steam copy.
 //!
 //! Two shapes of payload:
@@ -23,7 +23,7 @@
 //!
 //! Paid releases (v6 and up) need an Absolute account. The catalogue itself is
 //! public, but the launcher refuses to install a paid build until a license is on
-//! disk — the one the official installer writes when you sign in.
+//! disk - the one the official installer writes when you sign in.
 
 use crate::util;
 use serde::{Deserialize, Serialize};
@@ -155,7 +155,7 @@ pub async fn catalog(app: &AppHandle) -> Result<Vec<Bundle>, String> {
     catalog_in(&crate::config::data_root(app).join("cache").join("mh")).await
 }
 
-/// Same fetch, given the cache folder directly — no Tauri types, so the CLI can
+/// Same fetch, given the cache folder directly - no Tauri types, so the CLI can
 /// resolve a release with the same code the window uses.
 pub async fn catalog_in(cache_dir: &Path) -> Result<Vec<Bundle>, String> {
     let cache_file = cache_dir.join("install.json");
@@ -201,15 +201,32 @@ pub async fn catalog_in(cache_dir: &Path) -> Result<Vec<Bundle>, String> {
 /// The bundle the launcher would install for this instance.
 ///
 /// Only an exact game build counts. The catalogue is the installer's own list, and
-/// a build it does not list is one Mega Hack has no package for — handing a 2.2074
+/// a build it does not list is one Mega Hack has no package for - handing a 2.2074
 /// package to a 2.2 folder would be worse than saying no. Geode builds are preferred
 /// when the instance has Geode; the standalone build is used when it does not.
 pub fn pick<'a>(bundles: &'a [Bundle], game: &str, want_geode: bool) -> Option<&'a Bundle> {
+    pick_for(bundles, game, "", want_geode)
+}
+
+/// `pick` narrowed to one published version when the caller names it. The CLI
+/// offers the whole per-build list, so the choice has to survive into the
+/// download instead of being decided by catalogue order.
+pub fn pick_for<'a>(
+    bundles: &'a [Bundle],
+    game: &str,
+    release: &str,
+    want_geode: bool,
+) -> Option<&'a Bundle> {
     let same_game: Vec<&Bundle> = bundles.iter().filter(|b| b.gjver == game).collect();
-    same_game
+    let named: Vec<&Bundle> = same_game
         .iter()
+        .copied()
+        .filter(|b| b.version == release)
+        .collect();
+    let pool = if named.is_empty() { same_game } else { named };
+    pool.iter()
         .find(|b| b.geode == want_geode)
-        .or_else(|| same_game.first())
+        .or_else(|| pool.first())
         .copied()
 }
 
@@ -266,13 +283,13 @@ pub async fn install_in(
         return Err("instance folder is missing".into());
     }
     let bundles = catalog_in(cache_dir).await?;
-    let bundle = pick(&bundles, game, want_geode).ok_or_else(|| {
-        format!("Mega Hack publishes no build for Geometry Dash {game} — use the installer")
+    let bundle = pick_for(&bundles, game, release, want_geode).ok_or_else(|| {
+        format!("Mega Hack publishes no build for Geometry Dash {game} - use the installer")
     })?;
 
     if bundle.paid() && license_token().is_none() {
         return Err(format!(
-            "{} is a paid release — sign in once in Absolute's installer, then install from here",
+            "{} is a paid release - sign in once in Absolute's installer, then install from here",
             bundle.name
         ));
     }
@@ -292,7 +309,7 @@ pub async fn install_in(
         let digest = util::sha256_file(&archive)?;
         if digest != bundle.hash.to_lowercase() {
             let _ = std::fs::remove_file(&archive);
-            return Err("Mega Hack archive failed its hash check — try again".into());
+            return Err("Mega Hack archive failed its hash check - try again".into());
         }
     }
 
