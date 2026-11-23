@@ -16,7 +16,7 @@ Windows only. Rust and Tauri for the window, one small Rust binary for the termi
 
 Grab what you need from [Releases](../../releases/latest).
 
-`GD.Launcher_1.2.0_x64-setup.exe` is the window. It installs per user, so there is no admin
+`GD.Launcher_1.3.0_x64-setup.exe` is the window. It installs per user, so there is no admin
 prompt, and WebView2 is already on Windows 11.
 
 `gd.exe` is the terminal version. Put it in any folder that is on your `PATH` and run `gd help`.
@@ -78,7 +78,7 @@ Everything else:
 gd list                        instances you have
 gd versions                    builds in the table
 gd install <version>           make an instance and pull it
-gd launch <instance>           start the game
+gd launch [instance]           start the game
 gd remove <instance>           forget an instance  [--delete-files]
 gd path <instance>             print the instance folder
 
@@ -103,6 +103,10 @@ gd doctor                      paths, toolchain and login state
 An instance is matched by full id, id prefix, version or name, so `gd launch 2.2074` works.
 `--data-dir` points the whole tool at a different folder. `-v` prints every line DepotDownloader
 writes.
+
+`gd launch` with no name, or the name `steam` or `default`, starts the copy Steam installed rather
+than a managed instance. Those three words are reserved, so an instance cannot be reached by them.
+`-v` also lets the game's own log through, which is otherwise swallowed.
 
 Progress is only drawn when stderr is a terminal, so `gd install 2.0 > log` gives you two lines
 and nothing else.
@@ -231,7 +235,7 @@ Output:
 ```
 src-tauri\target\release\gd-launcher.exe
 src-tauri\target\release\gd.exe
-src-tauri\target\release\bundle\nsis\GD Launcher_1.2.0_x64-setup.exe
+src-tauri\target\release\bundle\nsis\GD Launcher_1.3.0_x64-setup.exe
 ```
 
 `gd.exe` is a separate binary in the same package, so `cargo build --release --bin gd` builds just
@@ -274,13 +278,13 @@ code page, `qr.ts` decodes those into a module matrix, and `QrCode.tsx` draws it
 ## Releasing
 
 ```powershell
-git tag v1.2.0
-git push origin v1.2.0
+git tag v1.3.0
+git push origin v1.3.0
 ```
 
 `release.yml` builds `gd.exe`, runs tauri-action on `windows-latest`, and attaches both files to a
 draft release. GitHub turns the space in the installer name into a dot, so the asset lands as
-`GD.Launcher_1.2.0_x64-setup.exe`. `check.yml` runs the typecheck, the Rust tests and a `gd` build
+`GD.Launcher_1.3.0_x64-setup.exe`. `check.yml` runs the typecheck, the Rust tests and a `gd` build
 on every push.
 
 ## Licence

@@ -1,7 +1,7 @@
 {
   "name": "gd-launcher",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Geometry Dash version manager and Geode mod launcher for Windows",
   "license": "MIT",
   "author": "GD Launcher contributors",

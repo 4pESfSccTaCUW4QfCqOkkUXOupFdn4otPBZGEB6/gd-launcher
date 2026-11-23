@@ -137,7 +137,15 @@ pub fn write_marker(path: &Path, instance: &Instance) -> Result<(), String> {
 /// Start the game. `steam_appid.txt` is what makes steam_api bind to 322170 even
 /// when the exe is launched outside the Steam client.
 pub fn launch(instance: &Instance) -> Result<(), String> {
-    let path = PathBuf::from(&instance.path);
+    launch_path(Path::new(&instance.path), false)
+}
+
+/// Start `GeometryDash.exe` from any folder. Split out so a Steam install that
+/// is not a managed instance can be launched straight from its own directory.
+///
+/// `quiet` drops the child's stdio, which matters in a terminal: Geode prints its
+/// whole loader log to stdout and none of it belongs in a one-line launch.
+pub fn launch_path(path: &Path, quiet: bool) -> Result<(), String> {
     let exe = path.join("GeometryDash.exe");
     if !exe.exists() {
         return Err("GeometryDash.exe is missing from this instance".into());
@@ -145,7 +153,12 @@ pub fn launch(instance: &Instance) -> Result<(), String> {
     let _ = std::fs::write(path.join("steam_appid.txt"), config::GD_APP_ID);
 
     let mut cmd = std::process::Command::new(&exe);
-    cmd.current_dir(&path);
+    cmd.current_dir(path);
+    if quiet {
+        cmd.stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;

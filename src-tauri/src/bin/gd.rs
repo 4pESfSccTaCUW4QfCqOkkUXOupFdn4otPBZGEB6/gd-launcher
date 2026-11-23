@@ -72,7 +72,7 @@ async fn dispatch(
         "list" | "ls" => cmd_list(dir),
         "versions" | "lsv" => cmd_versions(),
         "install" | "add" => cmd_install(dir, args, verbose).await,
-        "launch" | "run" => cmd_launch(dir, args),
+        "launch" | "run" => cmd_launch(dir, args, verbose),
         "remove" | "rm" => cmd_remove(dir, args),
         "path" | "where" => cmd_path(dir, args),
         "steam" => cmd_steam(dir),
@@ -984,19 +984,60 @@ fn count_files(root: &Path) -> usize {
         .count()
 }
 
-fn cmd_launch(dir: &Path, args: &[String]) -> Result<(), String> {
+fn cmd_launch(dir: &Path, args: &[String], verbose: bool) -> Result<(), String> {
+    let needle = args.first().map(|s| s.as_str()).unwrap_or("steam");
+
+    // `gd launch`, `gd launch steam` and `gd launch default` all start the copy
+    // Steam installed. Anything else is matched against the managed instances.
+    if needle.is_empty() || needle.eq_ignore_ascii_case("steam") || needle.eq_ignore_ascii_case("default")
+    {
+        return launch_steam(verbose);
+    }
+
     let cfg = Config::load(dir);
-    let needle = args
-        .first()
-        .ok_or("usage: gd launch <instance>")?;
     let record = resolve(&cfg, needle)?;
     let path = Path::new(&record.path);
     if !path.join("GeometryDash.exe").exists() {
         return Err(format!("{} has no GeometryDash.exe", path.display()));
     }
-    instance::launch(record)?;
+    instance::launch_path(path, !verbose)?;
     println!("launched  {}  {}", short_id(&record.id), record.version);
     Ok(())
+}
+
+/// Start the game where Steam installed it. No `steam_appid.txt` is written: the
+/// Steam copy already sits inside its own library, so Steam is the one launching
+/// it and the app id is not needed.
+fn launch_steam(verbose: bool) -> Result<(), String> {
+    let installs = steam::find_installs();
+    if installs.is_empty() {
+        return Err("no Steam copy found - `gd steam` shows what the launcher can see".into());
+    }
+
+    let mut stale: Vec<String> = Vec::new();
+    for install in &installs {
+        let path = PathBuf::from(&install.path);
+        if !steam::looks_like_gd(&path) {
+            stale.push(install.path.clone());
+            continue;
+        }
+        instance::launch_path(&path, !verbose)?;
+        println!(
+            "launched  steam  build {}  {}",
+            if install.build_id.is_empty() {
+                "?"
+            } else {
+                &install.build_id
+            },
+            install.path
+        );
+        return Ok(());
+    }
+
+    Err(format!(
+        "Steam has Geometry Dash registered but no GeometryDash.exe on disk: {}",
+        stale.join(", ")
+    ))
 }
 
 fn cmd_remove(dir: &Path, args: &[String]) -> Result<(), String> {
@@ -1552,7 +1593,7 @@ gd - GD Launcher in a terminal
   gd list                        managed instances
   gd versions                    bundled game builds
   gd install <version>           create an instance and pull its depot
-  gd launch <instance>           start Geometry Dash
+  gd launch [instance]           start Geometry Dash  (no name: the Steam copy)
   gd remove <instance>           forget an instance  [--delete-files]
   gd path <instance>             print the instance folder
 
@@ -1579,6 +1620,9 @@ whether to put Mega Hack on it and which release.
   --mh <release>                 install that Mega Hack release, no questions
   --no-mh                        never offer Mega Hack
   -y, --yes                      take every default, ask nothing
+
+gd launch with no name, `steam` or `default` starts the copy Steam installed.
+Any other name matches a managed instance.
 
 global
   --data-dir <path>              use a different data folder
