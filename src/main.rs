@@ -15,12 +15,11 @@
 
 use gd_launcher_lib::{
     config::{self, Config, DepotBackend, Instance, Settings},
-    depot, depot_session, geode, instance, manifests, mh, mh_install, steam, util,
+    geode, instance, manifests, mh, mh_install, paths, pull, steam, util,
 };
-use std::collections::VecDeque;
+use pull::{Login, PullEvent, PullRequest, Sink};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 
 fn main() {
@@ -38,13 +37,46 @@ fn run() -> Result<(), String> {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     let verbose = take_flag(&mut args, "-v") | take_flag(&mut args, "--verbose");
     let data_override = take_value(&mut args, "--data-dir");
+    let enable_tui = take_flag(&mut args, "-tui") | take_flag(&mut args, "--tui");
+    let disable_tui = take_flag(&mut args, "--no-tui");
+    // If both are given the off switch wins, which is the only way to recover from
+    // a script that passes both.
+    let enable_tui = enable_tui && !disable_tui;
 
     let dir = match data_override {
         Some(path) => PathBuf::from(path),
-        None => default_data_dir()?,
+        None => paths::default_data_dir()?,
     };
 
+    // The switch is persisted first, so `gd -tui` keeps working after a crash and
+    // `gd --no-tui` can always get the terminal back.
+    let mut cfg = Config::load(&dir);
+    let mut changed = false;
+    if enable_tui && !cfg.settings.tui {
+        cfg.settings.tui = true;
+        changed = true;
+    }
+    if disable_tui && cfg.settings.tui {
+        cfg.settings.tui = false;
+        changed = true;
+    }
+    if changed {
+        cfg.save(&dir).map_err(|e| format!("save config: {e}"))?;
+    }
+
+    if enable_tui {
+        return gd_launcher_lib::tui::run(&dir);
+    }
+    if disable_tui && args.is_empty() {
+        println!("tui  off - bare `gd` prints help again");
+        print_help();
+        return Ok(());
+    }
+
     let Some(command) = args.first().cloned() else {
+        if cfg.settings.tui {
+            return gd_launcher_lib::tui::run(&dir);
+        }
         print_help();
         return Ok(());
     };
@@ -57,6 +89,7 @@ fn run() -> Result<(), String> {
 
     runtime.block_on(dispatch(&dir, &command, &args, verbose))
 }
+
 
 async fn dispatch(
     dir: &Path,
@@ -78,52 +111,16 @@ async fn dispatch(
         "mods" | "mod" => cmd_mods(dir, args).await,
         "loader" | "geode" => cmd_loader(dir, args, verbose).await,
         "doctor" => cmd_doctor(dir),
+        "version" | "-V" | "--version" => {
+            println!("gd {}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
         "help" | "-h" | "--help" => {
             print_help();
             Ok(())
         }
         other => Err(format!("unknown command `{other}` - try `gd help`")),
     }
-}
-
-// --------------------------------------------------------------------- paths
-
-fn default_data_dir() -> Result<PathBuf, String> {
-    let base = std::env::var_os("APPDATA")
-        .map(PathBuf::from)
-        .ok_or("APPDATA is not set - pass --data-dir")?;
-    Ok(base.join(config::APP_ID))
-}
-
-fn instances_root(dir: &Path, settings: &Settings) -> PathBuf {
-    config::instances_root_for(dir, settings)
-}
-
-/// DepotDownloader keeps its token next to the tool, so that file is checked
-/// alongside the .NET isolated store.
-fn session_paths(dir: &Path) -> Vec<PathBuf> {
-    vec![dir
-        .join("tools")
-        .join("depotdownloader")
-        .join("account.config")]
-}
-
-fn session(dir: &Path) -> depot_session::DepotSession {
-    depot_session::cached_session(&session_paths(dir)).unwrap_or_default()
-}
-
-fn managed_depotdownloader(dir: &Path) -> PathBuf {
-    dir.join("tools")
-        .join("depotdownloader")
-        .join("DepotDownloader.exe")
-}
-
-fn cache_dir(dir: &Path) -> PathBuf {
-    dir.join("cache")
-}
-
-fn mh_cache(dir: &Path) -> PathBuf {
-    cache_dir(dir).join("mh")
 }
 
 // ------------------------------------------------------------- arg utilities
@@ -171,6 +168,9 @@ struct Printer {
     verbose: bool,
     line_active: bool,
     tty: bool,
+    /// Last percent drawn for the auto-fetched toolchain, so the fetch prints one
+    /// line per percent instead of one per chunk.
+    tool_percent: f64,
 }
 
 impl Printer {
@@ -180,7 +180,44 @@ impl Printer {
             verbose,
             line_active: false,
             tty: std::io::stderr().is_terminal(),
+            tool_percent: 0.0,
         }
+    }
+
+    fn handle(&mut self, event: PullEvent) {
+        match event {
+            PullEvent::Note(text) => self.note(&text),
+            PullEvent::Log { stream, line } => self.log(stream, &line),
+            PullEvent::Qr(lines) => self.qr(&lines),
+            PullEvent::Progress { percent, detail } => self.progress(percent, &detail),
+            PullEvent::ToolProgress {
+                percent,
+                received,
+                total,
+            } => self.tool_progress(percent, received, total),
+        }
+    }
+
+    fn tool_progress(&mut self, percent: f64, received: u64, total: u64) {
+        if !self.tty {
+            return;
+        }
+        if percent - self.tool_percent < 1.0 && percent < 100.0 {
+            return;
+        }
+        self.tool_percent = percent;
+        eprint!(
+            "\r\x1b[2K  DepotDownloader  {:>5.1}%  {} / {}",
+            percent,
+            util::human_bytes(received),
+            if total > 0 {
+                util::human_bytes(total)
+            } else {
+                "?".into()
+            }
+        );
+        let _ = std::io::stderr().flush();
+        self.line_active = true;
     }
 
     fn clear(&mut self) {
@@ -230,6 +267,10 @@ impl Printer {
 
     fn finish(&mut self) {
         self.clear();
+        if self.tool_percent > 0.0 {
+            eprintln!();
+            self.tool_percent = 0.0;
+        }
     }
 }
 
@@ -246,308 +287,45 @@ fn compact_detail(detail: &str) -> String {
     String::new()
 }
 
-fn pump_stream<R: std::io::Read>(
-    stream: R,
-    tag: &'static str,
-    printer: Arc<Mutex<Printer>>,
-    tail: Arc<Mutex<VecDeque<String>>>,
-) {
-    use std::io::BufRead;
-    let mut reader = std::io::BufReader::new(stream);
-    let mut raw: Vec<u8> = Vec::new();
-    let mut decoder = depot::LinePump::new();
-
-    loop {
-        raw.clear();
-        match reader.read_until(b'\n', &mut raw) {
-            Ok(0) => break,
-            Ok(_) => {}
-            Err(_) => break,
-        }
-        while matches!(raw.last(), Some(b'\n') | Some(b'\r')) {
-            raw.pop();
-        }
-        for event in decoder.feed(&raw, tag) {
-            match event {
-                depot::PumpEvent::Qr(lines) => {
-                    if let Ok(mut out) = printer.lock() {
-                        out.qr(&lines);
-                    }
-                }
-                depot::PumpEvent::Progress { percent, detail } => {
-                    if let Ok(mut out) = printer.lock() {
-                        out.progress(percent, &detail);
-                    }
-                }
-                depot::PumpEvent::Log { stream, line } => {
-                    if let Ok(mut buf) = tail.lock() {
-                        if buf.len() >= 40 {
-                            buf.pop_front();
-                        }
-                        buf.push_back(line.clone());
-                    }
-                    if let Ok(mut out) = printer.lock() {
-                        out.log(stream, &line);
-                    }
-                }
-                depot::PumpEvent::AuthFailed(line) => {
-                    if let Ok(mut out) = printer.lock() {
-                        out.note(&format!("steam rejected the cached key ({line}) - `gd login`"));
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ------------------------------------------------------------------ toolchain
-
-fn resolve_backend(
-    dir: &Path,
-    settings: &Settings,
-) -> Result<(DepotBackend, PathBuf), String> {
-    match settings.depot_backend {
-        DepotBackend::DepotDownloader => {
-            let override_path = PathBuf::from(settings.depotdownloader_path.trim());
-            if !settings.depotdownloader_path.trim().is_empty() && override_path.exists() {
-                return Ok((DepotBackend::DepotDownloader, override_path));
-            }
-            let managed = managed_depotdownloader(dir);
-            if managed.exists() {
-                return Ok((DepotBackend::DepotDownloader, managed));
-            }
-            Err("DepotDownloader is not installed yet".into())
-        }
-        DepotBackend::SteamCmd => {
-            let override_path = PathBuf::from(settings.steamcmd_path.trim());
-            if !settings.steamcmd_path.trim().is_empty() && override_path.exists() {
-                return Ok((DepotBackend::SteamCmd, override_path));
-            }
-            if let Some(found) = depot::find_steamcmd() {
-                return Ok((DepotBackend::SteamCmd, found));
-            }
-            Err("steamcmd.exe not found - set its path in `gd doctor` output".into())
-        }
-    }
-}
-
-/// Fetch DepotDownloader into the managed tools folder on first use.
-async fn fetch_depotdownloader(dir: &Path) -> Result<PathBuf, String> {
-    let tools = dir.join("tools").join("depotdownloader");
-    std::fs::create_dir_all(&tools).map_err(|e| format!("create {tools:?}: {e}"))?;
-    let zip = tools.join("depotdownloader.zip");
-
-    eprintln!("  no DepotDownloader yet - fetching the 32 MB toolchain");
-    let tty = {
-        use std::io::IsTerminal;
-        std::io::stderr().is_terminal()
-    };
-    let mut last = 0.0f64;
-    util::download("DepotDownloader", depot::DD_DOWNLOAD_URL, &zip, |progress| {
-        if !tty {
-            return;
-        }
-        // The callback is synchronous and may fire often; one line per percent.
-        if progress.percent - last >= 1.0 || progress.percent >= 100.0 {
-            last = progress.percent;
-            eprint!(
-                "\r\x1b[2K  DepotDownloader  {:>5.1}%  {} / {}",
-                progress.percent,
-                util::human_bytes(progress.received),
-                if progress.total > 0 {
-                    util::human_bytes(progress.total)
-                } else {
-                    "?".into()
-                }
-            );
-            let _ = std::io::stderr().flush();
-        }
-    })
-    .await?;
-    if tty {
-        eprintln!();
-    }
-    util::extract_zip(&zip, &tools)?;
-    let _ = std::fs::remove_file(&zip);
-
-    let exe = tools.join("DepotDownloader.exe");
-    if !exe.exists() {
-        return Err("archive unpacked but DepotDownloader.exe is missing".into());
-    }
-    Ok(exe)
-}
-
 // ---------------------------------------------------------------------- pull
 
-struct Login {
-    username: String,
-    password: String,
-    use_qr: bool,
-}
-
-impl Login {
-    fn anonymous() -> Self {
-        Self {
-            username: String::new(),
-            password: String::new(),
-            use_qr: false,
+/// Route pull events into the terminal printer. One sink, one lock, so the two
+/// pump threads cannot interleave a progress line with a QR row.
+fn printer_sink(printer: Arc<Mutex<Printer>>) -> Sink {
+    Arc::new(move |event| {
+        if let Ok(mut out) = printer.lock() {
+            out.handle(event);
         }
-    }
+    })
 }
 
-/// One finished child run: exit code plus the last lines it printed.
-struct PullRun {
-    code: i32,
-    tail: Vec<String>,
-}
-
-impl PullRun {
-    fn ok(&self) -> bool {
-        self.code == 0
-    }
-
-    /// DepotDownloader refuses the login outright when `-username` names an
-    /// account whose token it cannot read. That happens after the data folder
-    /// moves, because the token store is keyed by the tool's own path.
-    fn stale_key(&self) -> bool {
-        self.tail.iter().any(|line| {
-            line.contains("requires a username and password or access token")
-                || line.contains("InvalidPassword")
-                || line.contains("LoggedInElsewhere")
-        })
-    }
-
-    fn report(&self) {
-        for line in &self.tail {
-            eprintln!("  {line}");
-        }
-    }
-}
-
-/// Run one depot pull to completion, streaming progress to stderr.
-///
-/// A cached key that DepotDownloader cannot read is retried once as a QR login
-/// instead of failing: the token store lives under the tool's own path, so it
-/// does not survive the launcher data folder moving.
-async fn pull(
+/// One pull to completion, drawn on stderr.
+async fn pull_with_printer(
     dir: &Path,
     settings: &Settings,
     target: &Path,
     depot_id: &str,
     manifest_id: &str,
-    login: &Login,
+    login: Login,
     verbose: bool,
 ) -> Result<(), String> {
-    let first = run_pull(dir, settings, target, depot_id, manifest_id, login, verbose).await?;
-    if first.ok() {
-        purge_cache(settings, target);
-        return Ok(());
-    }
-
-    if !login.use_qr && !login.username.trim().is_empty() && first.stale_key() {
-        eprintln!("  the cached steam key is not readable from this install - scanning a code once");
-        let qr = Login {
-            username: String::new(),
-            password: String::new(),
-            use_qr: true,
-        };
-        let retry = run_pull(dir, settings, target, depot_id, manifest_id, &qr, verbose).await?;
-        if retry.ok() {
-            purge_cache(settings, target);
-            return Ok(());
-        }
-        retry.report();
-        return Err(format!("DepotDownloader exited with {}", retry.code));
-    }
-
-    first.report();
-    Err(format!("DepotDownloader exited with {}", first.code))
-}
-
-fn purge_cache(settings: &Settings, target: &Path) {
-    if settings.purge_depot_cache {
-        // A full pull leaves several GB of chunk cache behind; the instance is
-        // complete once the manifest validates.
-        let _ = std::fs::remove_dir_all(target.join(".DepotDownloader"));
-    }
-}
-
-async fn run_pull(
-    dir: &Path,
-    settings: &Settings,
-    target: &Path,
-    depot_id: &str,
-    manifest_id: &str,
-    login: &Login,
-    verbose: bool,
-) -> Result<PullRun, String> {
-    let (backend, exe) = match resolve_backend(dir, settings) {
-        Ok(pair) => pair,
-        Err(err) => {
-            if settings.depot_backend != DepotBackend::DepotDownloader {
-                return Err(err);
-            }
-            (DepotBackend::DepotDownloader, fetch_depotdownloader(dir).await?)
-        }
-    };
-
-    std::fs::create_dir_all(target).map_err(|e| format!("create {target:?}: {e}"))?;
-
-    let mut cmd = depot::build_command(
-        backend,
-        &exe,
+    let printer = Arc::new(Mutex::new(Printer::new(verbose)));
+    let sink = printer_sink(printer.clone());
+    let result = pull::pull(PullRequest {
+        dir,
+        settings,
         target,
         depot_id,
         manifest_id,
-        &login.username,
-        &login.password,
-        login.use_qr,
-        settings.max_downloads,
-    );
-    cmd.stdin(Stdio::inherit())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("spawn {}: {e}", exe.display()))?;
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-
-    let printer = Arc::new(Mutex::new(Printer::new(verbose)));
-    let tail: Arc<Mutex<VecDeque<String>>> = Arc::new(Mutex::new(VecDeque::new()));
-
-    let out_thread = stdout.map(|stream| {
-        let printer = printer.clone();
-        let tail = tail.clone();
-        std::thread::spawn(move || pump_stream(stream, "out", printer, tail))
-    });
-    let err_thread = stderr.map(|stream| {
-        let printer = printer.clone();
-        let tail = tail.clone();
-        std::thread::spawn(move || pump_stream(stream, "err", printer, tail))
-    });
-
-    let status = child.wait().map_err(|e| format!("wait {}: {e}", exe.display()))?;
-    if let Some(handle) = out_thread {
-        let _ = handle.join();
-    }
-    if let Some(handle) = err_thread {
-        let _ = handle.join();
-    }
+        login,
+        attach_stdin: true,
+        sink,
+    })
+    .await;
     if let Ok(mut out) = printer.lock() {
         out.finish();
     }
-
-    let recent = tail
-        .lock()
-        .map(|buf| buf.iter().rev().take(10).cloned().collect::<Vec<_>>())
-        .unwrap_or_default();
-
-    Ok(PullRun {
-        code: status.code().unwrap_or(-1),
-        tail: recent.into_iter().rev().collect(),
-    })
+    result
 }
 
 // ------------------------------------------------------------------ commands
@@ -744,7 +522,7 @@ async fn cmd_install(dir: &Path, args: &[String], verbose: bool) -> Result<(), S
     let mh_choice = plan_mega_hack(dir, &version, &opts).await?;
 
     let mut cfg = Config::load(dir);
-    let root = instances_root(dir, &cfg.settings);
+    let root = paths::instances_root(dir, &cfg.settings);
     std::fs::create_dir_all(&root).map_err(|e| format!("create {root:?}: {e}"))?;
 
     let target = instance::unique_dir(&root, &name, &version);
@@ -772,33 +550,19 @@ async fn cmd_install(dir: &Path, args: &[String], verbose: bool) -> Result<(), S
         record.path
     );
 
-    let cached = session(dir);
-    let login = if opts.anonymous {
-        Login::anonymous()
-    } else if opts.qr || !cached.signed_in {
-        if !cached.signed_in && !opts.qr {
-            eprintln!("  no steam session - scan the code below with the Steam app");
-        }
-        Login {
-            username: String::new(),
-            password: String::new(),
-            use_qr: true,
-        }
-    } else {
-        Login {
-            username: cached.username.clone(),
-            password: String::new(),
-            use_qr: false,
-        }
-    };
+    let cached = paths::session(dir);
+    if !opts.anonymous && !opts.qr && !cached.signed_in {
+        eprintln!("  no steam session - scan the code below with the Steam app");
+    }
+    let login = Login::for_pull(dir, opts.anonymous, opts.qr);
 
-    pull(
+    pull_with_printer(
         dir,
         &cfg.settings,
         &target,
         &record.depot_id,
         &manifest,
-        &login,
+        login,
         verbose,
     )
     .await?;
@@ -847,7 +611,7 @@ async fn plan_mega_hack(
         return Ok(None);
     }
 
-    let bundles = mh_install::catalog(&mh_cache(dir))
+    let bundles = mh_install::catalog(&paths::mh_cache(dir))
         .await
         .unwrap_or_default();
     let for_build: Vec<&mh_install::Bundle> = bundles
@@ -951,7 +715,7 @@ async fn apply_mega_hack(dir: &Path, record: &Instance, choice: &MhChoice, verbo
     let path = PathBuf::from(&record.path);
     let mut printer = Printer::new(verbose);
     let report = mh_install::install(
-        &mh_cache(dir),
+        &paths::mh_cache(dir),
         &path,
         &record.version,
         &choice.release,
@@ -982,21 +746,21 @@ fn count_files(root: &Path) -> usize {
 
 fn cmd_launch(dir: &Path, args: &[String], verbose: bool) -> Result<(), String> {
     let needle = args.first().map(|s| s.as_str()).unwrap_or("steam");
+    let cfg = Config::load(dir);
 
     // `gd launch`, `gd launch steam` and `gd launch default` all start the copy
     // Steam installed. Anything else is matched against the managed instances.
     if needle.is_empty() || needle.eq_ignore_ascii_case("steam") || needle.eq_ignore_ascii_case("default")
     {
-        return launch_steam(verbose);
+        return launch_steam(verbose, &cfg.settings.game_args);
     }
 
-    let cfg = Config::load(dir);
     let record = resolve(&cfg, needle)?;
     let path = Path::new(&record.path);
     if !path.join("GeometryDash.exe").exists() {
         return Err(format!("{} has no GeometryDash.exe", path.display()));
     }
-    instance::launch_path(path, !verbose)?;
+    instance::launch_path_with(path, !verbose, &cfg.settings.game_args)?;
     println!("launched  {}  {}", short_id(&record.id), record.version);
     Ok(())
 }
@@ -1004,7 +768,7 @@ fn cmd_launch(dir: &Path, args: &[String], verbose: bool) -> Result<(), String> 
 /// Start the game where Steam installed it. No `steam_appid.txt` is written: the
 /// Steam copy already sits inside its own library, so Steam is the one launching
 /// it and the app id is not needed.
-fn launch_steam(verbose: bool) -> Result<(), String> {
+fn launch_steam(verbose: bool, game_args: &str) -> Result<(), String> {
     let installs = steam::find_installs();
     if installs.is_empty() {
         return Err("no Steam copy found - `gd steam` shows what the launcher can see".into());
@@ -1017,7 +781,7 @@ fn launch_steam(verbose: bool) -> Result<(), String> {
             stale.push(install.path.clone());
             continue;
         }
-        instance::launch_path(&path, !verbose)?;
+        instance::launch_path_with(&path, !verbose, game_args)?;
         println!(
             "launched  steam  build {}  {}",
             if install.build_id.is_empty() {
@@ -1113,7 +877,7 @@ fn cmd_steam(dir: &Path) -> Result<(), String> {
         }
     }
 
-    let cached = session(dir);
+    let cached = paths::session(dir);
     println!("depot session");
     if cached.signed_in {
         println!(
@@ -1155,7 +919,7 @@ fn cmd_import(dir: &Path, args: &[String], verbose: bool) -> Result<(), String> 
     }
 
     let mut cfg = Config::load(dir);
-    let root = instances_root(dir, &cfg.settings);
+    let root = paths::instances_root(dir, &cfg.settings);
     let label = name.unwrap_or_else(|| "Steam copy".to_string());
 
     // Copying is the safe default: Steam keeps updating its own folder.
@@ -1227,7 +991,7 @@ async fn cmd_login(dir: &Path, args: &[String], verbose: bool) -> Result<(), Str
     let mut rest: Vec<String> = args.to_vec();
     let force = take_flag(&mut rest, "--force");
 
-    let cached = session(dir);
+    let cached = paths::session(dir);
     if cached.signed_in && !force {
         println!("already signed in as {}", cached.username);
         println!("`gd login --force` re-scans a code anyway");
@@ -1247,24 +1011,19 @@ async fn cmd_login(dir: &Path, args: &[String], verbose: bool) -> Result<(), Str
     );
 
     let cfg = Config::load(dir);
-    let login = Login {
-        username: String::new(),
-        password: String::new(),
-        use_qr: true,
-    };
-    pull(
+    pull_with_printer(
         dir,
         &cfg.settings,
         &scratch,
         config::GD_WIN_DEPOT,
         smallest.manifest,
-        &login,
+        Login::Qr,
         verbose,
     )
     .await?;
 
     let _ = std::fs::remove_dir_all(&scratch);
-    let after = session(dir);
+    let after = paths::session(dir);
     if after.signed_in {
         println!("signed in  {}", after.username);
     } else {
@@ -1352,7 +1111,7 @@ async fn cmd_mega_hack(dir: &Path, args: &[String], verbose: bool) -> Result<(),
 
     let mut printer = Printer::new(verbose);
     let report = mh_install::install(
-        &mh_cache(dir),
+        &paths::mh_cache(dir),
         &path,
         &version,
         &release,
@@ -1490,7 +1249,7 @@ async fn cmd_loader(dir: &Path, args: &[String], verbose: bool) -> Result<(), St
 
     let requested = rest.get(1).cloned();
     let mut printer = Printer::new(verbose);
-    let version = geode::install_loader(&path, requested, &cache_dir(dir), |progress| {
+    let version = geode::install_loader(&path, requested, &paths::cache_dir(dir), |progress| {
         printer.progress(progress.percent, &progress.label)
     })
     .await;
@@ -1505,7 +1264,7 @@ fn cmd_doctor(dir: &Path) -> Result<(), String> {
     println!("data        {}", dir.display());
     println!(
         "instances   {}",
-        instances_root(dir, &cfg.settings).display()
+        paths::instances_root(dir, &cfg.settings).display()
     );
     println!(
         "backend     {}",
@@ -1515,12 +1274,12 @@ fn cmd_doctor(dir: &Path) -> Result<(), String> {
         }
     );
 
-    match resolve_backend(dir, &cfg.settings) {
+    match paths::resolve_backend(dir, &cfg.settings) {
         Ok((_, exe)) => println!("toolchain   {}", exe.display()),
         Err(err) => println!("toolchain   {err} - it is fetched on first install"),
     }
 
-    let cached = session(dir);
+    let cached = paths::session(dir);
     if cached.signed_in {
         println!("session     {} ({})", cached.username, cached.path);
     } else {
@@ -1610,6 +1369,9 @@ gd - GD Launcher in a terminal
 
   gd doctor                      paths, toolchain and session
 
+  gd -tui                        full screen interface, remembered after that
+  gd --no-tui                    stop bare `gd` opening it
+
 install asks two things: what to call the instance, and for builds below 2.2,
 whether to put Mega Hack on it and which release.
   --name <text>                  skip the name question
@@ -1623,6 +1385,10 @@ Any other name matches a managed instance.
 global
   --data-dir <path>              use a different data folder
   -v, --verbose                  show every line DepotDownloader prints
+
+The full screen interface has six screens: instances, versions, mods, mega hack,
+steam and settings. Settings holds the palette, the tui default, the depot
+backend, download count, cache purge, the instances folder and game arguments.
 
 An instance is matched by full id, id prefix, version or name.
 Versions come from `gd versions`; pass --manifest to pull anything else."

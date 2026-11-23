@@ -12,5 +12,8 @@ pub mod instance;
 pub mod manifests;
 pub mod mh;
 pub mod mh_install;
+pub mod paths;
+pub mod pull;
 pub mod steam;
+pub mod tui;
 pub mod util;

@@ -138,6 +138,12 @@ pub fn launch(instance: &Instance) -> Result<(), String> {
 /// `quiet` drops the child's stdio, which matters in a terminal: Geode prints its
 /// whole loader log to stdout and none of it belongs in a one-line launch.
 pub fn launch_path(path: &Path, quiet: bool) -> Result<(), String> {
+    launch_path_with(path, quiet, "")
+}
+
+/// Same launch, with extra arguments appended. `args` is split on whitespace;
+/// there is no quoting layer, so a path with spaces cannot go through here.
+pub fn launch_path_with(path: &Path, quiet: bool, args: &str) -> Result<(), String> {
     let exe = path.join("GeometryDash.exe");
     if !exe.exists() {
         return Err("GeometryDash.exe is missing from this instance".into());
@@ -146,6 +152,9 @@ pub fn launch_path(path: &Path, quiet: bool) -> Result<(), String> {
 
     let mut cmd = std::process::Command::new(&exe);
     cmd.current_dir(path);
+    for arg in args.split_whitespace() {
+        cmd.arg(arg);
+    }
     if quiet {
         cmd.stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())

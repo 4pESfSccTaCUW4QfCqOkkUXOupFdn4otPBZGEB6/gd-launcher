@@ -7,7 +7,8 @@ saves.
 
 Builds come straight from Steam by depot manifest, so you get the real thing and not a repack.
 
-One command, no window. It is a single Rust binary that runs in the terminal.
+One command, no window. It is a single Rust binary that runs in the terminal. There is a full
+screen interface for the same thing when you would rather browse than type.
 
 Windows only.
 
@@ -21,6 +22,56 @@ gd help
 ```
 
 If you would rather not touch `PATH`, run it by path. Nothing else is required.
+
+## Full screen interface
+
+```
+gd -tui
+```
+
+That opens the interface and remembers the choice, so after the first time bare `gd` opens it too.
+`gd --no-tui` puts it back to help. The same switch is in the Settings screen.
+
+Six screens, `1` through `6` or `tab`:
+
+| Screen | What it does |
+| --- | --- |
+| Instances | launch, remove, install the Geode loader, open the folder |
+| Versions | the 25 bundled builds, `enter` installs one |
+| Mods | installed Geode mods, search the index, install, remove |
+| Mega Hack | releases for the selected build, install and remove |
+| Steam | Steam copies, accounts, the cached login, copy or link one in |
+| Settings | palette, defaults, paths |
+
+`enter` is the main action on each screen. `?` lists every key. `L` hides the activity panel,
+which is where download progress and QR codes go. `q` quits and asks first when a job is running.
+
+Downloads run on a worker thread, so the screen keeps drawing while a build pulls. Jobs run one
+at a time, in the order you started them.
+
+The Mega Hack question during an install is only asked when Absolute actually publishes a package
+for that build. If there is nothing to install, the build pulls on its own and the activity panel
+says so.
+
+### Settings
+
+Every row is saved to `config.json` as soon as it changes.
+
+| Setting | What it does |
+| --- | --- |
+| theme | amber, phosphor, ice, violet, ember or paper, applied live |
+| tui by default | bare `gd` opens the interface instead of help |
+| confirm remove | ask before a remove that deletes files |
+| depot backend | DepotDownloader or steamcmd |
+| max downloads | parallel chunk connections, 1 to 32 |
+| purge depot cache | delete `.DepotDownloader` after a good pull |
+| remember username | prefill the cached Steam account name |
+| instances folder | where instance folders are created, empty for the default |
+| game arguments | extra flags appended to `GeometryDash.exe` |
+| data folder | read only, set it with `--data-dir` |
+
+`left` and `right` change a value, `enter` edits text or flips a toggle, `R` resets everything to
+defaults. Instances are never touched by a reset.
 
 ## Builds
 
@@ -100,6 +151,9 @@ gd loader <instance> [status]  Geode loader state
 gd loader <instance> install [version]
 
 gd doctor                      paths, toolchain and login state
+
+gd -tui                        open the full screen interface, and remember it
+gd --no-tui                    stop bare gd opening it
 ```
 
 `gd launch` with no name, or the name `steam` or `default`, starts the copy Steam installed. Any
@@ -131,7 +185,8 @@ no tool can read a password and this one does not ask for one.
 
 Scan the code once and the token is cached. Every pull after that reuses it. The code only comes
 back when there is genuinely no usable token, when Steam rejects the one that is there, or when
-you run `gd login --force`.
+you run `gd login --force`. In the full screen interface, `s` on the Steam screen starts the same
+sign in, and the code is drawn in the activity panel.
 
 DepotDownloader writes its token into .NET isolated storage, and the folder names are hashes of
 the assembly identity, so they change with every DepotDownloader release. `depot_session.rs` walks
@@ -246,25 +301,33 @@ src/
   main.rs                the command line front end
   lib.rs                 module list
   config.rs              settings, instances, version catalogue
+  paths.rs               every folder this tool owns, resolved once
   steam.rs               Steam libraries and live depot info
-  depot.rs               DepotDownloader and steamcmd driver
+  depot.rs               DepotDownloader and steamcmd argv and line decoder
   depot_session.rs       reads DepotDownloader's cached token
+  pull.rs                one pull, backend lookup to child teardown
   geode.rs               Geode index, mods, loader
   mh.rs                  Mega Hack release table
   mh_install.rs          Mega Hack download, verify, install, remove
   instance.rs            create, copy, launch, delete
   util.rs                HTTP, downloads, zip
+  tui/
+    mod.rs               screen state, keys, event loop
+    jobs.rs              the worker thread and every job it runs
+    view.rs              drawing
+    theme.rs             the six palettes
+    settings.rs          the settings rows as data
 ```
 
 The QR is not an image. DepotDownloader prints it as terminal block characters in the Windows OEM
-code page, `depot::LinePump` decodes those bytes, and `gd` prints the lines untouched. They are
-already square in a terminal cell grid.
+code page, `depot::LinePump` decodes those bytes, and both front ends draw the lines untouched.
+They are already square in a terminal cell grid.
 
 ## Releasing
 
 ```powershell
-git tag v2.0.0
-git push origin v2.0.0
+git tag v2.1.0
+git push origin v2.1.0
 ```
 
 `release.yml` builds `gd.exe` on `windows-latest` and attaches it to a GitHub release. `check.yml`

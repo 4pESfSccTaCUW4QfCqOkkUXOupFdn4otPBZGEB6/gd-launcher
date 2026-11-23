@@ -1,6 +1,6 @@
 [package]
 name = "gd-launcher"
-version = "2.0.0"
+version = "2.1.0"
 description = "Geometry Dash version manager for the terminal"
 authors = ["GD Launcher contributors"]
 edition = "2021"
@@ -26,6 +26,7 @@ sha2 = "0.10"
 walkdir = "2"
 winreg = "0.52"
 uuid = { version = "1", features = ["v4"] }
+ratatui = "0.29"
 
 [profile.release]
 codegen-units = 1

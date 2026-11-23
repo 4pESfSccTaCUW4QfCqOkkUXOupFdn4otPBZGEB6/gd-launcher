@@ -58,6 +58,15 @@ pub struct Settings {
     /// Set once a QR sign-in has completed. The login key is cached from then on,
     /// so the QR flow is not offered again.
     pub steam_qr_done: bool,
+    /// Bare `gd` opens the full screen interface instead of printing help.
+    pub tui: bool,
+    /// Palette name for the full screen interface. Unknown names fall back to
+    /// the default, so a hand-edited config cannot leave the screen unreadable.
+    pub tui_theme: String,
+    /// Ask before a remove that deletes files.
+    pub tui_confirm_remove: bool,
+    /// Extra arguments appended to `GeometryDash.exe` on every launch.
+    pub game_args: String,
 }
 
 impl Default for Settings {
@@ -73,6 +82,10 @@ impl Default for Settings {
             purge_depot_cache: true,
             close_on_launch: false,
             steam_qr_done: false,
+            tui: false,
+            tui_theme: "amber".into(),
+            tui_confirm_remove: true,
+            game_args: String::new(),
         }
     }
 }
