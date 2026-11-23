@@ -1,0 +1,16 @@
+* text=auto
+
+# Windows checkout: keep Rust and config as CRLF, everything else LF in the index.
+*.rs text eol=crlf
+*.toml text eol=crlf
+*.json text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.css text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+
+# Binary
+*.png binary
+*.ico binary
+*.icns binary
