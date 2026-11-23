@@ -1,10 +1,5 @@
-# Dependencies
-node_modules/
-
 # Build output
-dist/
-src-tauri/target/
-src-tauri/gen/
+/target/
 
 # Logs and local noise
 *.log

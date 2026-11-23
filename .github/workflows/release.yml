@@ -5,8 +5,6 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
-# tauri-action creates the release, so the token needs write access. This is also
-# granted at the job level; both are needed when the repo default is read-only.
 permissions:
   contents: write
 
@@ -19,43 +17,20 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 20
-          cache: npm
-
       - uses: dtolnay/rust-toolchain@stable
 
-      # Cargo builds dominate the wall clock; the cache turns 12 minutes into 2.
       - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
 
-      - run: npm ci
+      - name: build
+        run: cargo build --release --bin gd
 
-      # Built before the bundle step so tauri-action's own release build reuses
-      # the artifacts instead of compiling the shared core twice.
-      - name: cli
-        run: cargo build --release --manifest-path src-tauri/Cargo.toml --bin gd
-
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "GD Launcher ${{ github.ref_name }}"
-          releaseBody: |
-            Windows installer. Per-user, no admin prompt, WebView2 already present on Windows 11.
-
-            - `GD.Launcher_*_x64-setup.exe` - the launcher window
-            - `gd.exe` - the same launcher in a terminal; put it on `PATH` and run `gd help`
-          releaseDraft: true
-          prerelease: false
-
-      # tauri-action only bundles the window, so the CLI is attached by hand.
-      - name: attach the terminal build
+      - name: publish
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${GITHUB_REF_NAME}" src-tauri/target/release/gd.exe --clobber
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "gd ${GITHUB_REF_NAME}" \
+            --notes "Windows binary. Put \`gd.exe\` anywhere on your PATH and run \`gd help\`." \
+            target/release/gd.exe

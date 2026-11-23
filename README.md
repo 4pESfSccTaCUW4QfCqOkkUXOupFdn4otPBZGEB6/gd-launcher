@@ -1,4 +1,4 @@
-# GD Launcher
+# gd
 
 Geometry Dash only keeps one build installed. Steam overwrites it every time RobTop pushes an
 update, so if you want to play an old version you are stuck hunting down a copy somewhere. This
@@ -7,19 +7,20 @@ saves.
 
 Builds come straight from Steam by depot manifest, so you get the real thing and not a repack.
 
-There is a window and there is a terminal command. Same config file, same instances, same
-downloads. Use whichever you feel like.
+One command, no window. It is a single Rust binary that runs in the terminal.
 
-Windows only. Rust and Tauri for the window, one small Rust binary for the terminal.
+Windows only.
 
 ## Install
 
-Grab what you need from [Releases](../../releases/latest).
+Download `gd.exe` from [Releases](../../releases/latest) and put it in any folder that is on your
+`PATH`. Then:
 
-`GD.Launcher_1.3.0_x64-setup.exe` is the window. It installs per user, so there is no admin
-prompt, and WebView2 is already on Windows 11.
+```
+gd help
+```
 
-`gd.exe` is the terminal version. Put it in any folder that is on your `PATH` and run `gd help`.
+If you would rather not touch `PATH`, run it by path. Nothing else is required.
 
 ## Builds
 
@@ -35,10 +36,10 @@ Anything else goes in by manifest id:
 gd install 2.2099 --manifest 1234567890123456789
 ```
 
-Valve does not publish old manifests, so the table in `src-tauri/src/manifests.rs` is the offline
-copy everyone shares. The current public manifest is fetched from `api.steamcmd.net`.
+Valve does not publish old manifests, so the table in `src/manifests.rs` is the offline copy
+everyone shares. The current public manifest is fetched from `api.steamcmd.net`.
 
-## Terminal
+## Install a build
 
 `gd install` asks what it needs before it starts downloading, so you set it up and walk away
 instead of coming back to a finished pull and three questions.
@@ -52,16 +53,17 @@ install mega hack for 2.113? (y/N): y
   3) v7.0.0           standalone paid
 release [v7.1.1-beta.4]: 2
 instance  f0a0ede6  2.113  ...\instances\pre-2-2-2-113
-...
+done      f0a0ede6  178.5 MB  778 files
 megahack  v7.1.0  4 files  9.9 MB
+launch    gd launch f0a0ede6
 ```
 
 The Mega Hack question only appears below 2.2, which is the last build before Geode existed. The
 list is whatever Absolute actually serves for that exact build. If they have nothing for it, you
 get told that and a link to the store instead of the wrong DLL.
 
-If the release list has a Geode package it is hidden here, because a fresh instance has no loader
-on disk yet. Install the loader first and `gd mh` will offer it.
+Geode packages are hidden here, because a fresh instance has no loader on disk yet. Install the
+loader first and `gd mh` will offer them.
 
 Flags to skip the questions:
 
@@ -72,7 +74,7 @@ Flags to skip the questions:
 -y, --yes         take every default
 ```
 
-Everything else:
+## Commands
 
 ```
 gd list                        instances you have
@@ -100,31 +102,25 @@ gd loader <instance> install [version]
 gd doctor                      paths, toolchain and login state
 ```
 
-An instance is matched by full id, id prefix, version or name, so `gd launch 2.2074` works.
-`--data-dir` points the whole tool at a different folder. `-v` prints every line DepotDownloader
-writes.
+`gd launch` with no name, or the name `steam` or `default`, starts the copy Steam installed. Any
+other name is matched against the managed instances by full id, id prefix, version or name, so
+`gd launch 2.2074` works. Those three words are reserved and cannot be reached as instance names.
 
-`gd launch` with no name, or the name `steam` or `default`, starts the copy Steam installed rather
-than a managed instance. Those three words are reserved, so an instance cannot be reached by them.
-`-v` also lets the game's own log through, which is otherwise swallowed.
+Global flags:
+
+```
+--data-dir <path>              use a different data folder
+-v, --verbose                  show every line DepotDownloader writes
+```
 
 Progress is only drawn when stderr is a terminal, so `gd install 2.0 > log` gives you two lines
-and nothing else.
-
-## Window
-
-Open it and you get the list of instances with their build, size and mod count. Add a build from
-the version table, pull it, and the instance shows up as a card with the version on it.
-
-Each instance page has the folder, the launch button, Geode or Mega Hack for that build, and
-remove. Settings has the depot backend, the instance folder, the theme and the login reset.
+and nothing else. `-v` also lets the game's own log through on launch, which is otherwise
+swallowed.
 
 ## Steam login
 
 Steam stopped storing passwords years ago. The client keeps a refresh token and nothing else, so
 no tool can read a password and this one does not ask for one.
-
-What happens instead:
 
 | What | Where it comes from |
 | --- | --- |
@@ -134,21 +130,23 @@ What happens instead:
 | First sign in | `-qr`, scan with the Steam mobile app |
 
 Scan the code once and the token is cached. Every pull after that reuses it. The code only comes
-back when there is genuinely no usable token, or when Steam rejects the one that is there, or when
-you reset the session yourself.
+back when there is genuinely no usable token, when Steam rejects the one that is there, or when
+you run `gd login --force`.
 
 DepotDownloader writes its token into .NET isolated storage, and the folder names are hashes of
 the assembly identity, so they change with every DepotDownloader release. `depot_session.rs` walks
-the store, inflates the protobuf and reads the login token out of it. That is what both front ends
-believe when they decide whether to show you a QR code.
+the store, inflates the protobuf and reads the login token out of it.
 
 The token store sits next to the tool's own exe. Move the data folder and the old token is
 orphaned, which is why a pull that fails that way retries once as a QR login instead of dying.
 
+`gd login` has to pull something, because DepotDownloader only answers `-qr` during a download. It
+takes the oldest bundled build, about 40 MB, into a scratch folder and deletes it.
+
 ## Mega Hack
 
-Geode did not exist before 2.2, so old builds get the tool of their era. `src-tauri/src/mh.rs`
-holds the public Windows release history and resolves a release for any build.
+Geode did not exist before 2.2, so old builds get the tool of their era. `src/mh.rs` holds the
+public Windows release history and resolves a release for any build.
 
 | Release | Build | Cost | Channel |
 | --- | --- | --- | --- |
@@ -166,7 +164,7 @@ How it picks:
 - Newest stable release for that build, one per major. A beta is skipped when that major has a
   finished release.
 - The 2.2 line was alpha only until v8.0.2, so builds below 2.206 fall back to the newest alpha of
-  their major rather than showing an empty panel.
+  their major rather than showing an empty list.
 - 2.113 offers v7, v6 and v5. Anything older gets v5, the free one.
 - A build with no release of its own takes the newest release for an older build. Never a newer
   one.
@@ -177,8 +175,8 @@ digit string and not a number. `2.2074` is 2.2 build 074 and shipped before `2.2
 build 08. Compare those as integers and you pick the wrong tool, so the tail is compared digit by
 digit with the shorter one first.
 
-Nothing is downloaded from a public direct link because there is not one. The launcher reads
-Absolute's own catalogue:
+Nothing is downloaded from a public direct link because there is not one. The catalogue is
+Absolute's own:
 
 ```
 GET https://absolllute.com/api/mega_hack/v9/install.json
@@ -196,14 +194,14 @@ archive. That hash is checked before anything is written.
 A `.mh_install_data` marker records the release and every file written, so remove deletes exactly
 those and nothing else. Your Steam copy is never touched.
 
-Paid releases need an Absolute account. The launcher reads the licence the official installer
-writes to `%LOCALAPPDATA%\absolllute.megahack\license` and never sees your password. Sign in once
-there and every paid release installs from here.
+Paid releases need an Absolute account. The licence the official installer writes to
+`%LOCALAPPDATA%\absolllute.megahack\license` is what gets read, and your password is never seen.
+Sign in once there and every paid release installs from here.
 
 ## Geode
 
-2.2 and up. The loader button drops `Geode.dll` and the XInput proxy into the instance, stable or
-beta. Below 2.2 the button is gone and the backend refuses the call anyway.
+2.2 and up. The loader command drops `Geode.dll` and the XInput proxy into the instance, stable or
+beta. Below 2.2 it refuses.
 
 Mods install from the Geode index into `<instance>\geode\mods`, checked against the index hash.
 Search, install, remove.
@@ -218,49 +216,35 @@ Search, install, remove.
   cache\                          loader bundles and Mega Hack archives
 ```
 
-An instance is a normal folder with `GeometryDash.exe` in it. Delete it by hand and the launcher
+An instance is a normal folder with `GeometryDash.exe` in it. Delete it by hand and `gd list`
 shows it as missing instead of falling over.
 
 ## Build
 
-Rust with the MSVC toolchain, Node 18 or newer, WebView2 (already on Windows 11).
+Rust with the MSVC toolchain. Nothing else.
 
 ```powershell
-npm install
-npm run tauri build
+cargo build --release
 ```
 
 Output:
 
 ```
-src-tauri\target\release\gd-launcher.exe
-src-tauri\target\release\gd.exe
-src-tauri\target\release\bundle\nsis\GD Launcher_1.3.0_x64-setup.exe
+target\release\gd.exe
 ```
 
-`gd.exe` is a separate binary in the same package, so `cargo build --release --bin gd` builds just
-the terminal one without touching the window.
-
-While working on it:
+Run the tests:
 
 ```powershell
-npm run tauri dev
-cargo run --manifest-path src-tauri/Cargo.toml --bin gd -- list
+cargo test --lib
 ```
 
-The shared core is Tauri free. Anything that does real work takes a path or a progress callback,
-and the window is a thin wrapper that turns those callbacks into events. That is why both front
-ends behave the same.
+Layout:
 
 ```
-src/                     React and TypeScript
-  App.tsx                routing, events, job state
-  qr.ts                  CP437 terminal QR to module matrix
-  components/            Library, InstancePage, BrowseMods, SettingsPage, AddVersionModal,
-                         DownloadBar, QrCode, Toasts
-src-tauri/src/
-  lib.rs                 Tauri commands
-  bin/gd.rs              the terminal front end
+src/
+  main.rs                the command line front end
+  lib.rs                 module list
   config.rs              settings, instances, version catalogue
   steam.rs               Steam libraries and live depot info
   depot.rs               DepotDownloader and steamcmd driver
@@ -273,19 +257,18 @@ src-tauri/src/
 ```
 
 The QR is not an image. DepotDownloader prints it as terminal block characters in the Windows OEM
-code page, `qr.ts` decodes those into a module matrix, and `QrCode.tsx` draws it as one SVG path.
+code page, `depot::LinePump` decodes those bytes, and `gd` prints the lines untouched. They are
+already square in a terminal cell grid.
 
 ## Releasing
 
 ```powershell
-git tag v1.3.0
-git push origin v1.3.0
+git tag v2.0.0
+git push origin v2.0.0
 ```
 
-`release.yml` builds `gd.exe`, runs tauri-action on `windows-latest`, and attaches both files to a
-draft release. GitHub turns the space in the installer name into a dot, so the asset lands as
-`GD.Launcher_1.3.0_x64-setup.exe`. `check.yml` runs the typecheck, the Rust tests and a `gd` build
-on every push.
+`release.yml` builds `gd.exe` on `windows-latest` and attaches it to a GitHub release. `check.yml`
+runs the tests and a release build on every push.
 
 ## Licence
 

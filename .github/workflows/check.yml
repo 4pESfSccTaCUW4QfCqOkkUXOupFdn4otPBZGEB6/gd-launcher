@@ -12,26 +12,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 20
-          cache: npm
-
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
 
-      - run: npm ci
+      - name: tests
+        run: cargo test --lib
 
-      - name: typecheck
-        run: npx tsc --noEmit
-
-      - name: rust tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
-
-      # The terminal front end is a second binary; a change to the shared core
-      # must not break it without CI noticing.
-      - name: cli build
-        run: cargo build --manifest-path src-tauri/Cargo.toml --bin gd
+      - name: build
+        run: cargo build --release
