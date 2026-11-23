@@ -10,7 +10,7 @@ build by Steam depot manifest, and mods install straight into the instance you s
 Grab the installer from [Releases](../../releases/latest):
 
 ```
-GD.Launcher_1.1.0_x64-setup.exe
+GD.Launcher_1.1.1_x64-setup.exe
 ```
 
 It installs per-user (no admin prompt) and needs nothing else — WebView2 ships with Windows 11.
@@ -124,7 +124,7 @@ Artifacts:
 ```
 src-tauri\target\release\gd-launcher.exe
 src-tauri\target\release\gd.exe
-src-tauri\target\release\bundle\nsis\GD Launcher_1.1.0_x64-setup.exe
+src-tauri\target\release\bundle\nsis\GD Launcher_1.1.1_x64-setup.exe
 ```
 
 `gd.exe` is a separate binary in the same package, so `cargo build --release --bin gd` builds it
@@ -333,13 +333,13 @@ bleeds past the white plate.
 Pushing a tag builds and publishes the installer:
 
 ```powershell
-git tag v1.1.0
-git push origin v1.1.0
+git tag v1.1.1
+git push origin v1.1.1
 ```
 
 `.github/workflows/release.yml` runs `npm ci`, builds `gd.exe`, then `tauri-action` on
 `windows-latest` and attaches the installer to a draft release (GitHub rewrites the space in the
-filename to a dot, so the asset lands as `GD.Launcher_1.1.0_x64-setup.exe`). A final step uploads
+filename to a dot, so the asset lands as `GD.Launcher_1.1.1_x64-setup.exe`). A final step uploads
 `gd.exe` beside it, because tauri-action only bundles the window.
 `.github/workflows/check.yml` runs the typecheck, the Rust tests and a `gd` build on every push
 and pull request.

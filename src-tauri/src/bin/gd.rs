@@ -168,16 +168,22 @@ fn short_id(id: &str) -> String {
 
 /// Shared stderr writer: one live progress line, QR art that clears it first,
 /// and a tail of recent log lines kept for the failure message.
+///
+/// The live line is only drawn when stderr is a terminal — piping `gd install`
+/// into a file must not fill it with carriage returns and escape codes.
 struct Printer {
     verbose: bool,
     line_active: bool,
+    tty: bool,
 }
 
 impl Printer {
     fn new(verbose: bool) -> Self {
+        use std::io::IsTerminal;
         Self {
             verbose,
             line_active: false,
+            tty: std::io::stderr().is_terminal(),
         }
     }
 
@@ -190,11 +196,15 @@ impl Printer {
     }
 
     fn progress(&mut self, percent: f64, detail: &str) {
-        eprint!(
-            "\r\x1b[2K  {:>5.1}%  {}",
-            percent,
-            truncate(detail.trim(), 62)
-        );
+        if !self.tty {
+            return;
+        }
+        let extra = compact_detail(detail);
+        if extra.is_empty() {
+            eprint!("\r\x1b[2K  {:>5.1}%", percent);
+        } else {
+            eprint!("\r\x1b[2K  {:>5.1}%  {}", percent, extra);
+        }
         let _ = std::io::stderr().flush();
         self.line_active = true;
     }
@@ -225,6 +235,19 @@ impl Printer {
     fn finish(&mut self) {
         self.clear();
     }
+}
+
+/// DepotDownloader prints `  42.17% C:\path\to\instance` and steamcmd prints
+/// `Update state (0x61) downloading, progress: 42.17 (1234 / 2900)`. The path is
+/// noise; the byte counters are worth keeping.
+fn compact_detail(detail: &str) -> String {
+    let detail = detail.trim();
+    if let Some(open) = detail.find('(') {
+        if let Some(close) = detail[open..].find(')') {
+            return detail[open + 1..open + close].trim().to_string();
+        }
+    }
+    String::new()
 }
 
 fn pump_stream<R: std::io::Read>(
@@ -319,8 +342,15 @@ async fn fetch_depotdownloader(dir: &Path) -> Result<PathBuf, String> {
     let zip = tools.join("depotdownloader.zip");
 
     eprintln!("  no DepotDownloader yet — fetching the 32 MB toolchain");
+    let tty = {
+        use std::io::IsTerminal;
+        std::io::stderr().is_terminal()
+    };
     let mut last = 0.0f64;
     util::download("DepotDownloader", depot::DD_DOWNLOAD_URL, &zip, |progress| {
+        if !tty {
+            return;
+        }
         // The callback is synchronous and may fire often; one line per percent.
         if progress.percent - last >= 1.0 || progress.percent >= 100.0 {
             last = progress.percent;
@@ -338,7 +368,9 @@ async fn fetch_depotdownloader(dir: &Path) -> Result<PathBuf, String> {
         }
     })
     .await?;
-    eprintln!();
+    if tty {
+        eprintln!();
+    }
     util::extract_zip(&zip, &tools)?;
     let _ = std::fs::remove_file(&zip);
 
@@ -850,7 +882,14 @@ fn cmd_import(dir: &Path, args: &[String], verbose: bool) -> Result<(), String> 
     } else {
         let target = instance::unique_dir(&root, &label, &install.build_id);
         eprintln!("  copying {} — this takes a minute", source.display());
+        let tty = {
+            use std::io::IsTerminal;
+            std::io::stderr().is_terminal()
+        };
         instance::copy_tree_in(&source, &target, |progress| {
+            if !tty {
+                return;
+            }
             let percent = progress
                 .get("percent")
                 .and_then(|v| v.as_f64())
