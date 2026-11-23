@@ -30,3 +30,8 @@ jobs:
 
       - name: rust tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
+      # The terminal front end is a second binary; a change to the shared core
+      # must not break it without CI noticing.
+      - name: cli build
+        run: cargo build --manifest-path src-tauri/Cargo.toml --bin gd

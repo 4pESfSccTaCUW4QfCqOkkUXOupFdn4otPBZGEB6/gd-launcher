@@ -25,13 +25,13 @@ pub struct DownloadProgress {
     pub percent: f64,
 }
 
-/// Stream `url` into `dest`, emitting progress on `event`. Returns the byte count.
-pub async fn download_to_file(
-    app: &AppHandle,
-    event: &str,
+/// Stream `url` into `dest`, reporting progress through `on_progress`. Returns
+/// the byte count. No Tauri types, so the CLI shares this exact path.
+pub async fn download(
     label: &str,
     url: &str,
     dest: &Path,
+    mut on_progress: impl FnMut(DownloadProgress),
 ) -> Result<u64, String> {
     let client = http_client()?;
     let resp = client
@@ -69,15 +69,12 @@ pub async fn download_to_file(
             } else {
                 0.0
             };
-            let _ = app.emit(
-                event,
-                DownloadProgress {
-                    label: label.to_string(),
-                    received,
-                    total,
-                    percent,
-                },
-            );
+            on_progress(DownloadProgress {
+                label: label.to_string(),
+                received,
+                total,
+                percent,
+            });
         }
     }
     use tokio::io::AsyncWriteExt;
@@ -90,16 +87,27 @@ pub async fn download_to_file(
     }
     std::fs::rename(&tmp, dest).map_err(|e| format!("rename {tmp:?} -> {dest:?}: {e}"))?;
 
-    let _ = app.emit(
-        event,
-        DownloadProgress {
-            label: label.to_string(),
-            received,
-            total: if total == 0 { received } else { total },
-            percent: 100.0,
-        },
-    );
+    on_progress(DownloadProgress {
+        label: label.to_string(),
+        received,
+        total: if total == 0 { received } else { total },
+        percent: 100.0,
+    });
     Ok(received)
+}
+
+/// Stream `url` into `dest`, emitting progress on `event`. Returns the byte count.
+pub async fn download_to_file(
+    app: &AppHandle,
+    event: &str,
+    label: &str,
+    url: &str,
+    dest: &Path,
+) -> Result<u64, String> {
+    download(label, url, dest, |progress| {
+        let _ = app.emit(event, progress);
+    })
+    .await
 }
 
 pub fn sha256_file(path: &Path) -> Result<String, String> {

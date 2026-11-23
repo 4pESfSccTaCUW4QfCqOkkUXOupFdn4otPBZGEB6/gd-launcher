@@ -198,11 +198,7 @@ fn mods_dir(instance_path: &Path) -> PathBuf {
 }
 
 /// Download one mod build and drop it in the instance's mods folder.
-pub async fn install_mod(
-    app: &AppHandle,
-    instance_path: &Path,
-    card: &ModCard,
-) -> Result<String, String> {
+pub async fn install_mod(instance_path: &Path, card: &ModCard) -> Result<String, String> {
     if !instance_path.exists() {
         return Err("instance folder is missing".into());
     }
@@ -238,7 +234,6 @@ pub async fn install_mod(
 
     let target = dir.join(format!("{}.geode", util::sanitize_component(&card.id)));
     std::fs::write(&target, &bytes).map_err(|e| format!("write {target:?}: {e}"))?;
-    let _ = app; // progress is emitted by the caller's task list
     Ok(target.display().to_string())
 }
 
@@ -410,6 +405,25 @@ pub async fn install_loader(
     instance_path: &Path,
     version: Option<String>,
 ) -> Result<String, String> {
+    use tauri::Emitter;
+    install_loader_in(
+        instance_path,
+        version,
+        &crate::config::data_root(app).join("cache"),
+        |progress| {
+            let _ = app.emit("tool://progress", progress);
+        },
+    )
+    .await
+}
+
+/// Same unpack, given a cache folder and a progress sink.
+pub async fn install_loader_in(
+    instance_path: &Path,
+    version: Option<String>,
+    cache: &Path,
+    mut on_progress: impl FnMut(util::DownloadProgress),
+) -> Result<String, String> {
     if !instance_path.exists() {
         return Err("instance folder is missing".into());
     }
@@ -428,11 +442,9 @@ pub async fn install_loader(
             .ok_or("geode index returned no Windows loader builds")?,
     };
 
-    let cache = crate::config::data_root(app).join("cache");
     let zip_path = cache.join(format!("geode-loader-{}.zip", picked.version));
     if !zip_path.exists() {
-        util::download_to_file(app, "tool://progress", "Geode loader", &picked.url, &zip_path)
-            .await?;
+        util::download("Geode loader", &picked.url, &zip_path, &mut on_progress).await?;
     }
     if !picked.hash.is_empty() {
         let digest = util::sha256_file(&zip_path)?;

@@ -10,11 +10,14 @@ build by Steam depot manifest, and mods install straight into the instance you s
 Grab the installer from [Releases](../../releases/latest):
 
 ```
-GD.Launcher_1.0.0_x64-setup.exe
+GD.Launcher_1.1.0_x64-setup.exe
 ```
 
 It installs per-user (no admin prompt) and needs nothing else — WebView2 ships with Windows 11.
 Building from source instead: see [Build](#build).
+
+The same release carries `gd.exe`, the terminal front end. Drop it anywhere on `PATH` and run
+`gd help`; see [Terminal](#terminal).
 
 ## What it does
 
@@ -38,6 +41,8 @@ Building from source instead: see [Build](#build).
   managed folder.
 - **Launch.** Writes `steam_appid.txt` and starts `GeometryDash.exe` from the instance folder,
   so each build runs with its own save/mod state.
+- **A terminal front end.** `gd.exe` does all of the above without a window — see
+  [Terminal](#terminal).
 
 ## Look
 
@@ -56,6 +61,54 @@ button sits on. **Buttons are filled, never outlined** — a neutral action is `
 one is the accent, a destructive hover flips to the accent. There is no `1px solid` button
 anywhere in the sheet. Badges follow the same rule: chips are filled, not boxed.
 
+## Terminal
+
+`gd.exe` is the same launcher without a window. Same data folder, same `config.json`, same
+manifest table, same DepotDownloader invocation — an instance created in one shows up in the
+other.
+
+```
+gd list                        managed instances
+gd versions                    bundled game builds
+gd install <version>           create an instance and pull its depot
+gd launch <instance>           start Geometry Dash
+gd remove <instance>           forget an instance  [--delete-files]
+gd path <instance>             print the instance folder
+
+gd steam                       Steam installs, accounts and the depot session
+gd import <index>              register a Steam install  [--link|--copy]
+gd login                       QR sign-in, cached for later pulls  [--force]
+
+gd mh <instance>               Mega Hack releases for that build
+gd mh <instance> install [r]   install one  (default: recommended)
+
+gd mods <instance> list        installed Geode mods
+gd mods <instance> search <q>  search the Geode index
+gd mods <instance> install <id>
+gd mods <instance> remove <id>
+
+gd loader <instance> [status]  Geode loader state
+gd loader <instance> install [version]
+
+gd doctor                      paths, toolchain and session
+```
+
+An instance is matched by full id, id prefix, version or name, so `gd launch 2.2074` works.
+`--data-dir` points the whole tool at a different folder; `-v` shows every line
+DepotDownloader prints.
+
+Two things behave differently to the window, both because a terminal is line-based:
+
+- **The QR prints as block art.** DepotDownloader writes it to stdout in the Windows OEM code
+  page; `depot::LinePump` decodes those bytes and the CLI prints the lines untouched, which is
+  already square in a terminal cell grid. Scan it with the Steam app.
+- **`gd login` pulls once.** DepotDownloader has no login-only mode — `-qr` is answered during a
+  download — so a sign-in pulls the oldest bundled build into a scratch folder and deletes it.
+  About 40 MB, once, and every later pull reuses the token.
+
+A cached token that DepotDownloader cannot read is retried as a QR login rather than failing:
+the token store is keyed by the tool's own path, so it does not survive the data folder moving.
+
 ## Build
 
 Requires Rust (MSVC toolchain), Node 18+, and the WebView2 runtime (already present on
@@ -70,13 +123,18 @@ Artifacts:
 
 ```
 src-tauri\target\release\gd-launcher.exe
-src-tauri\target\release\bundle\nsis\GD Launcher_1.0.0_x64-setup.exe
+src-tauri\target\release\gd.exe
+src-tauri\target\release\bundle\nsis\GD Launcher_1.1.0_x64-setup.exe
 ```
+
+`gd.exe` is a separate binary in the same package, so `cargo build --release --bin gd` builds it
+on its own without touching the window.
 
 Dev loop:
 
 ```powershell
 npm run tauri dev
+cargo run --manifest-path src-tauri/Cargo.toml --bin gd -- list
 ```
 
 ## First run
@@ -249,6 +307,7 @@ src/                     React + TypeScript front end
                          DownloadBar, QrCode, Toasts
 src-tauri/src/
   lib.rs                 Tauri command surface
+  bin/gd.rs              `gd`, the terminal front end
   config.rs              settings / instances / version catalogue persistence
   steam.rs               Steam library discovery + live depot metadata
   depot.rs               DepotDownloader & steamcmd process driver
@@ -260,6 +319,10 @@ src-tauri/src/
   util.rs                HTTP, verified downloads, zip extraction
 ```
 
+Both front ends sit on the same core. The Tauri-only pieces are the event emitters and the app
+handle; every module that does real work exposes a `*_in` / plain function taking a path or a
+progress callback, and the window is a thin wrapper that maps those callbacks onto `emit`.
+
 The QR is rendered from DepotDownloader's terminal output, not an image: `depot.rs` keeps the
 raw bytes, `qr.ts` decodes CP437 block characters (`0xDB`, not UTF-8) into a square module
 matrix, and `QrCode.tsx` draws it as one SVG path inside a fixed square viewBox so nothing
@@ -270,14 +333,16 @@ bleeds past the white plate.
 Pushing a tag builds and publishes the installer:
 
 ```powershell
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.1.0
+git push origin v1.1.0
 ```
 
-`.github/workflows/release.yml` runs `npm ci` then `tauri-action` on `windows-latest` and attaches
-the installer to a draft release (GitHub rewrites the space in the filename to a dot, so the
-asset lands as `GD.Launcher_1.0.0_x64-setup.exe`). `.github/workflows/check.yml` runs the
-typecheck and the Rust tests on every push and pull request.
+`.github/workflows/release.yml` runs `npm ci`, builds `gd.exe`, then `tauri-action` on
+`windows-latest` and attaches the installer to a draft release (GitHub rewrites the space in the
+filename to a dot, so the asset lands as `GD.Launcher_1.1.0_x64-setup.exe`). A final step uploads
+`gd.exe` beside it, because tauri-action only bundles the window.
+`.github/workflows/check.yml` runs the typecheck, the Rust tests and a `gd` build on every push
+and pull request.
 
 ## Licence
 

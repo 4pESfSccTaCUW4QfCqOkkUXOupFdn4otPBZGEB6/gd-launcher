@@ -95,7 +95,7 @@ pub fn resolve_backend(app: &AppHandle, state: &AppState) -> Result<(DepotBacken
     }
 }
 
-fn find_steamcmd() -> Option<PathBuf> {
+pub fn find_steamcmd() -> Option<PathBuf> {
     for candidate in [
         r"C:\steamcmd\steamcmd.exe",
         r"C:\Program Files (x86)\Steam\steamcmd.exe",
@@ -159,9 +159,10 @@ pub async fn install_depotdownloader(app: AppHandle) -> Result<String, String> {
     Ok(exe.display().to_string())
 }
 
-/// Build the argv for the chosen backend.
+/// Build the argv for the chosen backend. Public so the CLI drives the tool with
+/// exactly the same flags the window does.
 #[allow(clippy::too_many_arguments)]
-fn build_command(
+pub fn build_command(
     backend: DepotBackend,
     exe: &Path,
     install_dir: &Path,
@@ -414,6 +415,94 @@ fn auth_failed(line: &str) -> bool {
     MARKERS.iter().any(|marker| line.contains(marker))
 }
 
+/// What one line of child output means.
+pub enum PumpEvent {
+    /// Ordinary output worth showing in a log.
+    Log {
+        stream: &'static str,
+        line: String,
+    },
+    /// Block art from a `-qr` run: the QR code itself.
+    Qr(Vec<String>),
+    /// A download progress line.
+    Progress { percent: f64, detail: String },
+    /// Steam rejected the cached key.
+    AuthFailed(String),
+}
+
+/// Line decoder for DepotDownloader and steamcmd output: OEM code page, QR block
+/// art and percent lines. Pure, so the window and the CLI read a run the same way.
+#[derive(Default)]
+pub struct LinePump {
+    qr: Vec<String>,
+    capturing: bool,
+    /// The quiet zone above a QR is printed as blank lines *before* the first
+    /// block row, so they are buffered in case a code starts.
+    pending: Vec<String>,
+}
+
+impl LinePump {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Feed one raw line (newline already stripped) and get back what it means.
+    /// `stream` tags log lines: "out" or "err".
+    pub fn feed(&mut self, raw: &[u8], stream: &'static str) -> Vec<PumpEvent> {
+        let line = decode_console_line(raw);
+        let has_block = line.chars().any(is_block_char);
+        let blankish = line.trim().is_empty();
+
+        if self.capturing {
+            if has_block || blankish {
+                self.qr.push(line);
+                if self.qr.len() > 96 {
+                    self.qr.clear();
+                    self.capturing = false;
+                    return Vec::new();
+                }
+                return vec![PumpEvent::Qr(self.qr.clone())];
+            }
+            self.capturing = false;
+            self.qr.clear();
+        }
+
+        if has_block {
+            self.capturing = true;
+            self.qr = std::mem::take(&mut self.pending);
+            self.qr.push(line);
+            return vec![PumpEvent::Qr(self.qr.clone())];
+        }
+
+        if blankish {
+            self.pending.push(line);
+            if self.pending.len() > 8 {
+                self.pending.remove(0);
+            }
+            return Vec::new();
+        }
+
+        self.pending.clear();
+        let mut out = Vec::with_capacity(3);
+        if auth_failed(&line) {
+            // The stored key is dead. Report it before the log line so the caller
+            // can drop the token and offer a fresh code.
+            out.push(PumpEvent::AuthFailed(line.clone()));
+        }
+        if let Some(percent) = parse_percent(&line) {
+            out.push(PumpEvent::Progress {
+                percent,
+                detail: line.trim().to_string(),
+            });
+        }
+        out.push(PumpEvent::Log {
+            stream,
+            line,
+        });
+        out
+    }
+}
+
 /// Read a child stream line by line, forwarding text and scraping progress.
 ///
 /// QR logins arrive as block-character art. Those lines are pulled out of the
@@ -422,11 +511,7 @@ fn auth_failed(line: &str) -> bool {
 fn pump<R: std::io::Read + Send + 'static>(app: AppHandle, stream: R, tag: &'static str) {
     let mut reader = BufReader::new(stream);
     let mut raw: Vec<u8> = Vec::new();
-    let mut qr: Vec<String> = Vec::new();
-    let mut capturing = false;
-    // The quiet zone above a QR is printed as blank lines *before* the first block
-    // row, so they have to be buffered in case a code starts.
-    let mut pending: Vec<String> = Vec::new();
+    let mut decoder = LinePump::new();
 
     loop {
         raw.clear();
@@ -438,64 +523,32 @@ fn pump<R: std::io::Read + Send + 'static>(app: AppHandle, stream: R, tag: &'sta
         while matches!(raw.last(), Some(b'\n') | Some(b'\r')) {
             raw.pop();
         }
-        let line = decode_console_line(&raw);
-        let has_block = line.chars().any(is_block_char);
-        let blankish = line.trim().is_empty();
 
-        if capturing {
-            if has_block || blankish {
-                qr.push(line);
-                if qr.len() > 96 {
-                    qr.clear();
-                    capturing = false;
-                } else {
-                    let _ = app.emit("depot://qr", QrFrame { lines: qr.clone() });
+        for event in decoder.feed(&raw, tag) {
+            match event {
+                PumpEvent::Qr(lines) => {
+                    let _ = app.emit("depot://qr", QrFrame { lines });
                 }
-                continue;
+                PumpEvent::Log { stream, line } => {
+                    let _ = app.emit(
+                        "depot://log",
+                        DepotLog {
+                            stream: stream.into(),
+                            line,
+                        },
+                    );
+                }
+                PumpEvent::Progress { percent, detail } => {
+                    let _ = app.emit("depot://progress", DepotProgress { percent, detail });
+                }
+                PumpEvent::AuthFailed(line) => {
+                    // Drop the dead token so the next launch offers the QR again
+                    // instead of silently failing every pull.
+                    let extra = crate::session_paths(&app);
+                    depot_session::forget(&extra);
+                    let _ = app.emit("steam://auth-needed", line);
+                }
             }
-            capturing = false;
-            qr.clear();
-        }
-
-        if has_block {
-            capturing = true;
-            qr = std::mem::take(&mut pending);
-            qr.push(line);
-            let _ = app.emit("depot://qr", QrFrame { lines: qr.clone() });
-            continue;
-        }
-
-        if blankish {
-            pending.push(line);
-            if pending.len() > 8 {
-                pending.remove(0);
-            }
-            continue;
-        }
-
-        pending.clear();
-        let _ = app.emit(
-            "depot://log",
-            DepotLog {
-                stream: tag.into(),
-                line: line.clone(),
-            },
-        );
-        if auth_failed(&line) {
-            // The stored key is dead. Drop it so the next launch offers the QR
-            // again instead of silently failing every pull.
-            let extra = crate::session_paths(&app);
-            depot_session::forget(&extra);
-            let _ = app.emit("steam://auth-needed", line.clone());
-        }
-        if let Some(percent) = parse_percent(&line) {
-            let _ = app.emit(
-                "depot://progress",
-                DepotProgress {
-                    percent,
-                    detail: line.trim().to_string(),
-                },
-            );
         }
     }
 }
@@ -567,4 +620,74 @@ pub fn is_running(app: &AppHandle) -> bool {
         .lock()
         .map(|g| g.is_some())
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn feed(lines: &[&[u8]]) -> Vec<PumpEvent> {
+        let mut pump = LinePump::new();
+        lines.iter().flat_map(|line| pump.feed(line, "out")).collect()
+    }
+
+    #[test]
+    fn qr_art_is_captured_not_logged() {
+        // DepotDownloader writes the code in the OEM code page: 0xDB is a full
+        // block, not UTF-8.
+        let events = feed(&[
+            b"Use the Steam Mobile App to sign in with this QR code:",
+            b"",
+            &[0xDB, 0xDB, 0x20, 0xDB],
+            &[0x20, 0xDB, 0xDB, 0x20],
+        ]);
+
+        let frames: Vec<&Vec<String>> = events
+            .iter()
+            .filter_map(|event| match event {
+                PumpEvent::Qr(lines) => Some(lines),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(frames.len(), 2, "one frame per captured line");
+
+        let last = frames.last().unwrap();
+        // The blank line above the code comes along as the quiet zone.
+        assert_eq!(last.len(), 3);
+        assert_eq!(last[1], "\u{2588}\u{2588} \u{2588}");
+        assert_eq!(last[2], " \u{2588}\u{2588} ");
+
+        // Nothing from the code may leak into the log stream.
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            PumpEvent::Log { line, .. } if line.contains('\u{2588}')
+        )));
+    }
+
+    #[test]
+    fn percent_lines_become_progress() {
+        let events = feed(&[b"  42.17% 1,234,567 / 2,900,000"]);
+        let percent = events.iter().find_map(|event| match event {
+            PumpEvent::Progress { percent, .. } => Some(*percent),
+            _ => None,
+        });
+        assert_eq!(percent, Some(42.17));
+    }
+
+    #[test]
+    fn steamcmd_progress_is_read_too() {
+        let events = feed(&[b"Update state (0x61) downloading, progress: 12.5 (100 / 800)"]);
+        let percent = events.iter().find_map(|event| match event {
+            PumpEvent::Progress { percent, .. } => Some(*percent),
+            _ => None,
+        });
+        assert_eq!(percent, Some(12.5));
+    }
+
+    #[test]
+    fn a_rejected_key_is_reported_before_the_log_line() {
+        let events = feed(&[b"InvalidPassword"]);
+        assert!(matches!(events.first(), Some(PumpEvent::AuthFailed(_))));
+        assert!(matches!(events.last(), Some(PumpEvent::Log { .. })));
+    }
 }

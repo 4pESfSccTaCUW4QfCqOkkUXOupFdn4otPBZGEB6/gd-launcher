@@ -94,7 +94,7 @@ pub fn steam_libraries() -> Vec<PathBuf> {
                 if looks_like_path || val.contains(":\\") || val.contains(":/") {
                     let candidate = PathBuf::from(val.replace("\\\\", "\\").replace('/', "\\"));
                     let apps = candidate.join("steamapps");
-                    if apps.exists() && !out.contains(&apps) {
+                    if apps.exists() && !out.iter().any(|existing| same_path(existing, &apps)) {
                         out.push(apps);
                     }
                 }
@@ -110,6 +110,28 @@ fn quoted_pair(line: &str) -> Option<(String, String)> {
     let key = parts.next()?.to_string();
     let val = parts.next()?.to_string();
     Some((key, val))
+}
+
+/// A line that is nothing but one quoted token — how `loginusers.vdf` opens an
+/// account block (`"76561199402092901"`). `quoted_pair` needs two, so those
+/// headers are read here instead.
+fn quoted_key(line: &str) -> Option<&str> {
+    let line = line.trim();
+    let rest = line.strip_prefix('"')?;
+    let end = rest.find('"')?;
+    let key = &rest[..end];
+    // Nothing but whitespace may follow the closing quote.
+    rest[end + 1..].trim().is_empty().then_some(key)
+}
+
+/// Windows paths compare case-insensitively; two library entries for one folder
+/// would otherwise show up as two installs.
+fn same_path(a: &Path, b: &Path) -> bool {
+    if cfg!(windows) {
+        a.to_string_lossy().eq_ignore_ascii_case(&b.to_string_lossy())
+    } else {
+        a == b
+    }
 }
 
 /// Every installed Geometry Dash copy, with the manifest the ACF recorded.
@@ -336,14 +358,18 @@ pub fn steam_accounts() -> Vec<SteamAccount> {
 
     for line in raw.lines() {
         let trimmed = line.trim();
-        if let Some((key, value)) = quoted_pair(trimmed) {
-            if current.is_none() && key.len() >= 17 && key.chars().all(|c| c.is_ascii_digit()) {
-                current = Some(SteamAccount {
-                    steam_id: key,
-                    ..Default::default()
-                });
-                continue;
+        if current.is_none() {
+            if let Some(key) = quoted_key(trimmed) {
+                if key.len() >= 17 && key.chars().all(|c| c.is_ascii_digit()) {
+                    current = Some(SteamAccount {
+                        steam_id: key.to_string(),
+                        ..Default::default()
+                    });
+                    continue;
+                }
             }
+        }
+        if let Some((key, value)) = quoted_pair(trimmed) {
             if let Some(account) = current.as_mut() {
                 match key.as_str() {
                     "AccountName" => account.account_name = value,
@@ -386,4 +412,33 @@ pub fn preferred_account() -> Option<SteamAccount> {
                 .cloned()
         })
         .or_else(|| accounts.into_iter().find(|a| !a.account_name.is_empty()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loginusers_headers_are_lone_quoted_ids() {
+        // The account block opens with the id on its own; quoted_pair needs two
+        // tokens and would miss it, which used to hide every account.
+        assert_eq!(quoted_key("\"76561199402092901\""), Some("76561199402092901"));
+        assert_eq!(quoted_key("  \"76561199402092901\"  "), Some("76561199402092901"));
+        // Ordinary key/value lines must not be read as a header.
+        assert_eq!(quoted_key("\"AccountName\"\t\t\"someone\""), None);
+        assert_eq!(quoted_key("}"), None);
+    }
+
+    #[test]
+    fn one_library_listed_twice_is_one_install() {
+        // libraryfolders.vdf repeats the primary library with different casing.
+        assert!(same_path(
+            Path::new(r"C:\Program Files (x86)\Steam\steamapps"),
+            Path::new(r"c:\program files (x86)\steam\steamapps"),
+        ));
+        assert!(!same_path(
+            Path::new(r"C:\Steam\steamapps"),
+            Path::new(r"D:\Steam\steamapps"),
+        ));
+    }
 }

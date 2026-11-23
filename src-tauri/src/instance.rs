@@ -63,7 +63,17 @@ pub fn unique_dir(root: &Path, name: &str, version: &str) -> PathBuf {
 /// entry so the UI is not dead for the two minutes 336 MB takes.
 pub fn copy_tree(app: &tauri::AppHandle, from: &Path, to: &Path) -> Result<u64, String> {
     use tauri::Emitter;
+    copy_tree_in(from, to, |progress| {
+        let _ = app.emit("copy://progress", progress);
+    })
+}
 
+/// The tauri-free half: same walk, progress handed to the caller.
+pub fn copy_tree_in(
+    from: &Path,
+    to: &Path,
+    mut on_progress: impl FnMut(serde_json::Value),
+) -> Result<u64, String> {
     let entries: Vec<_> = std::fs::read_dir(from)
         .map_err(|e| format!("read {from:?}: {e}"))?
         .filter_map(|e| e.ok())
@@ -82,16 +92,13 @@ pub fn copy_tree(app: &tauri::AppHandle, from: &Path, to: &Path) -> Result<u64, 
         }
         copy_entry(&src, &dst)?;
         copied += 1;
-        let _ = app.emit(
-            "copy://progress",
-            serde_json::json!({
-                "label": name,
-                "received": i + 1,
-                "done": i + 1,
-                "total": total,
-                "percent": ((i + 1) as f64 / total as f64) * 100.0,
-            }),
-        );
+        on_progress(serde_json::json!({
+            "label": name,
+            "received": i + 1,
+            "done": i + 1,
+            "total": total,
+            "percent": ((i + 1) as f64 / total as f64) * 100.0,
+        }));
     }
     Ok(copied)
 }

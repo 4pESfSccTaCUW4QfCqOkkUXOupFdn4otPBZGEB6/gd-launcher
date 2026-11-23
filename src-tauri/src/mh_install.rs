@@ -152,7 +152,12 @@ pub fn license_status() -> LicenseStatus {
 /// The catalogue is cached next to the other launcher downloads so a failed fetch
 /// does not take the install button down with it.
 pub async fn catalog(app: &AppHandle) -> Result<Vec<Bundle>, String> {
-    let cache_dir = crate::config::data_root(app).join("cache").join("mh");
+    catalog_in(&crate::config::data_root(app).join("cache").join("mh")).await
+}
+
+/// Same fetch, given the cache folder directly — no Tauri types, so the CLI can
+/// resolve a release with the same code the window uses.
+pub async fn catalog_in(cache_dir: &Path) -> Result<Vec<Bundle>, String> {
     let cache_file = cache_dir.join("install.json");
 
     let fetched = async {
@@ -234,10 +239,33 @@ pub async fn install(
     release: &str,
     want_geode: bool,
 ) -> Result<InstallReport, String> {
+    use tauri::Emitter;
+    install_in(
+        &crate::config::data_root(app).join("cache").join("mh"),
+        instance_path,
+        game,
+        release,
+        want_geode,
+        |progress| {
+            let _ = app.emit("mh://progress", progress);
+        },
+    )
+    .await
+}
+
+/// Same install, driven by a cache folder and a progress sink.
+pub async fn install_in(
+    cache_dir: &Path,
+    instance_path: &Path,
+    game: &str,
+    release: &str,
+    want_geode: bool,
+    mut on_progress: impl FnMut(util::DownloadProgress),
+) -> Result<InstallReport, String> {
     if !instance_path.exists() {
         return Err("instance folder is missing".into());
     }
-    let bundles = catalog(app).await?;
+    let bundles = catalog_in(cache_dir).await?;
     let bundle = pick(&bundles, game, want_geode).ok_or_else(|| {
         format!("Mega Hack publishes no build for Geometry Dash {game} — use the installer")
     })?;
@@ -249,16 +277,14 @@ pub async fn install(
         ));
     }
 
-    let cache_dir = crate::config::data_root(app).join("cache").join("mh");
-    std::fs::create_dir_all(&cache_dir).map_err(|e| format!("mkdir cache: {e}"))?;
+    std::fs::create_dir_all(cache_dir).map_err(|e| format!("mkdir cache: {e}"))?;
     let archive = cache_dir.join(format!("{}-{}", bundle.version, bundle.file));
 
-    let bytes = util::download_to_file(
-        app,
-        "mh://progress",
+    let bytes = util::download(
         &format!("Mega Hack {}", bundle.version),
         &bundle.url(),
         &archive,
+        &mut on_progress,
     )
     .await?;
 

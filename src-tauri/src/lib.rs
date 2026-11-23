@@ -1,16 +1,16 @@
 //! Tauri command surface for the launcher.
 
-mod config;
-mod depot;
-mod depot_session;
-mod geode;
-mod instance;
-mod manifests;
-mod mh;
-mod mh_install;
+pub mod config;
+pub mod depot;
+pub mod depot_session;
+pub mod geode;
+pub mod instance;
+pub mod manifests;
+pub mod mh;
+pub mod mh_install;
 mod state;
-mod steam;
-mod util;
+pub mod steam;
+pub mod util;
 
 use config::{Config, DepotBackend, Instance, Settings, VersionEntry};
 use instance::InstanceView;
@@ -111,15 +111,13 @@ fn steam_account() -> Option<steam::SteamAccount> {
     steam::preferred_account()
 }
 
-/// Fall back to the detected Steam account when the caller did not name one, then
-/// to the account the cached login token belongs to — a machine with no Steam
-/// client but a stored token still pulls fine.
+/// Fall back to the account the cached login token belongs to. A name scraped
+/// from the Steam client is deliberately *not* used: DepotDownloader refuses the
+/// run when the name has no token behind it, so the token store is the only
+/// evidence of a login that actually works.
 fn resolve_login(app: &AppHandle, username: String, use_qr: bool) -> String {
     if use_qr || !username.trim().is_empty() {
         return username;
-    }
-    if let Some(account) = steam::preferred_account() {
-        return account.account_name;
     }
     current_session(app).username
 }
@@ -596,7 +594,6 @@ async fn search_mods(query: String, page: u64, per_page: u64) -> Result<geode::M
 
 #[tauri::command]
 async fn install_mod(
-    app: AppHandle,
     state: State<'_, AppState>,
     instance_id: String,
     mod_id: String,
@@ -610,7 +607,7 @@ async fn install_mod(
         return Err("Geode is not installed in this instance — install the loader first".into());
     }
     let card = geode::mod_detail(&mod_id).await?;
-    geode::install_mod(&app, &path, &card).await?;
+    geode::install_mod(&path, &card).await?;
     let mods = geode::list_installed(&path);
     mods.into_iter()
         .find(|m| m.id == card.id)

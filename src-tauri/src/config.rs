@@ -225,12 +225,17 @@ pub fn migrate_legacy_root(dir: &Path) -> bool {
     true
 }
 
-pub fn instances_root(app: &tauri::AppHandle, settings: &Settings) -> PathBuf {
+/// Where managed instance folders live. Pure, so the CLI resolves it the same way.
+pub fn instances_root_for(data_dir: &Path, settings: &Settings) -> PathBuf {
     if settings.instances_dir.trim().is_empty() {
-        data_root(app).join("instances")
+        data_dir.join("instances")
     } else {
         PathBuf::from(settings.instances_dir.trim())
     }
+}
+
+pub fn instances_root(app: &tauri::AppHandle, settings: &Settings) -> PathBuf {
+    instances_root_for(&data_root(app), settings)
 }
 
 pub fn now_secs() -> i64 {

@@ -33,6 +33,11 @@ jobs:
 
       - run: npm ci
 
+      # Built before the bundle step so tauri-action's own release build reuses
+      # the artifacts instead of compiling the shared core twice.
+      - name: cli
+        run: cargo build --release --manifest-path src-tauri/Cargo.toml --bin gd
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -42,6 +47,15 @@ jobs:
           releaseBody: |
             Windows installer. Per-user, no admin prompt, WebView2 already present on Windows 11.
 
-            Download `GD Launcher_*_x64-setup.exe` below.
+            - `GD.Launcher_*_x64-setup.exe` — the launcher window
+            - `gd.exe` — the same launcher in a terminal; put it on `PATH` and run `gd help`
           releaseDraft: true
           prerelease: false
+
+      # tauri-action only bundles the window, so the CLI is attached by hand.
+      - name: attach the terminal build
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${GITHUB_REF_NAME}" src-tauri/target/release/gd.exe --clobber
