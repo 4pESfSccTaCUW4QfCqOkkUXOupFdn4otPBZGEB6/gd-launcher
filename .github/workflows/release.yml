@@ -5,6 +5,11 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# tauri-action creates the release, so the token needs write access. This is also
+# granted at the job level; both are needed when the repo default is read-only.
+permissions:
+  contents: write
+
 jobs:
   windows:
     runs-on: windows-latest
