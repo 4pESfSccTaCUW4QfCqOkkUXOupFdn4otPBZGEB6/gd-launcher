@@ -125,7 +125,7 @@ deflate-wrapped protobuf, and reads field 4 — the `LoginTokens` map — for an
 non-empty token. Nothing else in that file is touched and the token itself never leaves the
 module.
 
-That read is what the UI believes. A launch with a token shows `session · zfloams` and no QR
+That read is what the UI believes. A launch with a token shows `session · <your account>` and no QR
 toggle; a launch without one ticks **Sign in with QR** for you. When Steam rejects a stale key
 the backend deletes it and fires `steam://auth-needed`, so the next pull shows a fresh code
 instead of failing quietly. **Settings → reset session** deletes it on demand.
@@ -205,7 +205,7 @@ v5 is free and not in the catalogue, so its button opens the store too.
 ## Where things live
 
 ```
-%APPDATA%\org.killywilly.gdlauncher\
+%APPDATA%\org.gdlauncher.desktop\
   config.json                     settings, instances, version catalogue
   instances\<slug>-<version>\     one folder per managed build
   tools\depotdownloader\          managed DepotDownloader

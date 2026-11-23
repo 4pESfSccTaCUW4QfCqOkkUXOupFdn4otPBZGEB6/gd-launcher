@@ -154,6 +154,77 @@ pub fn data_root(app: &tauri::AppHandle) -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from(".").join("gd-launcher-data"))
 }
 
+/// The app id changed once, before the first public release, which leaves the
+/// pre-release data in a sibling folder. No folder name is hard-coded: a
+/// sibling counts as a previous root only when its `config.json` parses as this
+/// `Config` *and* lists an instance that lives inside it. That signature is
+/// this app's own layout — nothing else on disk produces it — so the scan can
+/// never grab another program's folder.
+fn find_previous_root(parent: &Path, current: &Path) -> Option<PathBuf> {
+    let mut candidates: Vec<PathBuf> = std::fs::read_dir(parent)
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir() && path.as_path() != current)
+        .collect();
+    candidates.sort();
+    candidates.into_iter().find(|candidate| {
+        let Ok(raw) = std::fs::read_to_string(candidate.join("config.json")) else {
+            return false;
+        };
+        let Ok(cfg) = serde_json::from_str::<Config>(&raw) else {
+            return false;
+        };
+        cfg.instances
+            .iter()
+            .any(|instance| Path::new(&instance.path).starts_with(candidate))
+    })
+}
+
+/// Move a previous data folder to `dir` and fix up the absolute paths inside
+/// it. Returns true when a migration actually happened.
+pub fn migrate_legacy_root(dir: &Path) -> bool {
+    if dir.exists() {
+        return false;
+    }
+    let Some(parent) = dir.parent() else {
+        return false;
+    };
+    let Some(old) = find_previous_root(parent, dir) else {
+        return false;
+    };
+    // Same volume, so this is a rename, not a copy — 3 GB of instances does not
+    // get duplicated.
+    if std::fs::rename(&old, dir).is_err() {
+        return false;
+    }
+
+    let old_root = old.display().to_string();
+    let new_root = dir.display().to_string();
+    let path = dir.join("config.json");
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return true;
+    };
+    let Ok(mut cfg) = serde_json::from_str::<Config>(&raw) else {
+        return true;
+    };
+    let mut touched = false;
+    for instance in &mut cfg.instances {
+        if let Some(rest) = instance.path.strip_prefix(&old_root) {
+            instance.path = format!("{new_root}{rest}");
+            touched = true;
+        }
+    }
+    if let Some(rest) = cfg.settings.instances_dir.strip_prefix(&old_root) {
+        cfg.settings.instances_dir = format!("{new_root}{rest}");
+        touched = true;
+    }
+    if touched {
+        let _ = cfg.save(dir);
+    }
+    true
+}
+
 pub fn instances_root(app: &tauri::AppHandle, settings: &Settings) -> PathBuf {
     if settings.instances_dir.trim().is_empty() {
         data_root(app).join("instances")
@@ -189,5 +260,98 @@ pub fn slug(input: &str) -> String {
         "instance".into()
     } else {
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Fresh, empty scratch directory per test — the migration moves real
+    /// folders around, so nothing may touch the live app data dir.
+    fn scratch(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("gd-launcher-test-{tag}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn instance_at(id: &str, path: &Path) -> Instance {
+        Instance {
+            id: id.into(),
+            name: "2.2081".into(),
+            version: "2.2081".into(),
+            build_id: "1".into(),
+            manifest_id: "2".into(),
+            depot_id: GD_WIN_DEPOT.into(),
+            path: path.display().to_string(),
+            created_at: 0,
+            linked: false,
+        }
+    }
+
+    #[test]
+    fn migration_moves_the_folder_and_rewrites_instance_paths() {
+        let base = scratch("migrate");
+        let old = base.join("previous-root");
+        let new = base.join("org.gdlauncher.desktop");
+        let old_instance = old.join("instances").join("steam-1-2");
+        std::fs::create_dir_all(&old_instance).unwrap();
+        std::fs::write(old_instance.join("GeometryDash.exe"), b"MZ").unwrap();
+
+        let mut cfg = Config::default();
+        cfg.instances.push(instance_at("steam-1-2", &old_instance));
+        cfg.settings.instances_dir = old.join("instances").display().to_string();
+        cfg.save(&old).unwrap();
+
+        assert!(migrate_legacy_root(&new));
+        assert!(new.exists(), "new root should exist after the rename");
+        assert!(!old.exists(), "legacy root should be gone");
+
+        let new_instance = new.join("instances").join("steam-1-2");
+        assert!(new_instance.join("GeometryDash.exe").exists(), "files moved with the folder");
+
+        let moved = Config::load(&new);
+        assert_eq!(moved.instances.len(), 1);
+        assert_eq!(moved.instances[0].path, new_instance.display().to_string());
+        assert_eq!(
+            moved.settings.instances_dir,
+            new.join("instances").display().to_string()
+        );
+    }
+
+    #[test]
+    fn migration_does_nothing_without_a_legacy_folder() {
+        let base = scratch("migrate-empty");
+        let new = base.join("org.gdlauncher.desktop");
+        assert!(!migrate_legacy_root(&new));
+        assert!(!new.exists(), "nothing to move, nothing created");
+    }
+
+    #[test]
+    fn migration_never_clobbers_an_existing_root() {
+        let base = scratch("migrate-both");
+        std::fs::create_dir_all(base.join("previous-root")).unwrap();
+        let new = base.join("org.gdlauncher.desktop");
+        std::fs::create_dir_all(&new).unwrap();
+
+        assert!(!migrate_legacy_root(&new));
+        assert!(
+            base.join("previous-root").exists(),
+            "previous folder left untouched"
+        );
+    }
+
+    #[test]
+    fn a_sibling_that_is_not_ours_is_left_alone() {
+        let base = scratch("migrate-foreign");
+        // Someone else's app data: a config file, but no instance pointing at itself.
+        let foreign = base.join("some-other-app");
+        std::fs::create_dir_all(&foreign).unwrap();
+        std::fs::write(foreign.join("config.json"), br#"{"theme":"dark"}"#).unwrap();
+
+        let new = base.join("org.gdlauncher.desktop");
+        assert!(!migrate_legacy_root(&new));
+        assert!(foreign.join("config.json").exists());
     }
 }

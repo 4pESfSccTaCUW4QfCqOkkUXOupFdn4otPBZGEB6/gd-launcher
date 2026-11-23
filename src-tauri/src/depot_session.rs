@@ -285,9 +285,9 @@ mod tests {
 
     #[test]
     fn reads_a_login_token() {
-        let blob = store(&[("zfloams", "AABBCCDD")]);
+        let blob = store(&[("testaccount", "AABBCCDD")]);
         let (name, token) = first_token(&blob).unwrap();
-        assert_eq!(name, "zfloams");
+        assert_eq!(name, "testaccount");
         assert_eq!(token, "AABBCCDD");
     }
 
@@ -311,7 +311,7 @@ mod tests {
 
     #[test]
     fn inflates_what_net_deflate_stream_writes() {
-        let blob = store(&[("zfloams", "AABBCCDD")]);
+        let blob = store(&[("testaccount", "AABBCCDD")]);
         let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
         encoder.write_all(&blob).unwrap();
         let packed = encoder.finish().unwrap();

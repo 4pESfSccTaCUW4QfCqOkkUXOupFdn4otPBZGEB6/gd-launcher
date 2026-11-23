@@ -808,6 +808,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let dir = config::data_root(app.handle());
+            if config::migrate_legacy_root(&dir) {
+                eprintln!("moved launcher data to {}", dir.display());
+            }
             std::fs::create_dir_all(&dir).ok();
             app.manage(AppState::new(dir));
             Ok(())

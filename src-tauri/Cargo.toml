@@ -2,7 +2,7 @@
 name = "gd-launcher"
 version = "1.0.0"
 description = "Geometry Dash version manager and Geode mod launcher"
-authors = ["killywilly"]
+authors = ["GD Launcher contributors"]
 edition = "2021"
 rust-version = "1.77"
 
